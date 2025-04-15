@@ -7,84 +7,152 @@ import shlex
 from textwrap import dedent
 from assistant import Assistant
 
+
 gpt = Assistant()
 
 
-def handle_command(command: str, state: AppState, console: Console):
+def parse_command(command: str, state: AppState, console: Console):
     parts = shlex.split(command.strip())
     if not parts:
         state.messages = []
         return
-
-    cmd = parts[0].lower()
     state.messages = []
     state.messages.append(f"[debug] Parsed parts: {parts}")
+    return parts[0].lower(), parts
 
-    if cmd == "add":
-        if len(parts) < 2:
-            state.messages.append(
-                f'[!] Usage: add "name" | "comment" | "description" | priority | tag'
-            )
-            return
 
-        name = parts[1]
+def handle_add(command_arguments: list, state: AppState, console: Console):
+    """
+    Parses arguments from the 'add' command and adds a new task to the application state.
+
+    Supports flexible input formats:
+    - Minimum: add "name"
+    - With priority or tag: add "name" 2 or add "name" "tag"
+    - With comment and description: add "name" "comment" "description"
+    - Full: add "name" "comment" "description" priority "tag"
+
+    Args:
+        command_arguments (list): Tokenized command input.
+        state (AppState): The current application state, used to store the new task.
+        console (Console): Rich console for output (not directly used here).
+    """
+
+    # Ensure the task name is provided
+    if len(command_arguments) < 2:
+        state.messages.append(
+            '[!] Usage: add "name" | "comment" | "description" | priority | tag'
+        )
+        return
+
+    # Case: only name provided
+    if len(command_arguments) == 2:
+        name = command_arguments[1]
         comment = ""
         description = ""
         priority = 3
         tag = ""
 
-        if len(parts) == 3:
-            if parts[2].isdigit():
-                priority = int(parts[2])
-            else:
-                tag = parts[2]
+    # Case: name and either priority or tag
+    if len(command_arguments) == 3:
+        name = command_arguments[1]
+        if command_arguments[2].isdigit():
+            priority = int(command_arguments[2])
+        else:
+            tag = command_arguments[2]
 
-        elif len(parts) == 4:
-            if parts[2].isdigit():
-                priority = int(parts[2])
-                tag = parts[3]
-            else:
-                comment = parts[2]
-                description = parts[3]
+    # Case: name + priority+tag or comment+description
+    if len(command_arguments) == 4:
+        name = command_arguments[1]
+        if command_arguments[2].isdigit():
+            priority = int(command_arguments[2])
+            tag = command_arguments[3]
+        else:
+            comment = command_arguments[2]
+            description = command_arguments[3]
 
-        elif len(parts) >= 5:
-            comment = parts[2]
-            description = parts[3]
-            try:
-                priority = int(parts[4])
-            except ValueError:
-                state.messages.append("[!] Priority must be a number")
-                return
-            tag = parts[5] if len(parts) > 5 else ""
-
-        state.add_task(name, comment, description, priority, tag)
-        state.messages.append(f"[+] Added task: {name}")
-
-    elif cmd == "done" and len(parts) == 2:
+    # Case: full input (name, comment, description, priority, tag)
+    if len(command_arguments) >= 5:
+        name = command_arguments[1]
+        comment = command_arguments[2]
+        description = command_arguments[3]
         try:
-            task_id = int(parts[1])
+            priority = int(command_arguments[4])  # Validate priority is a number
         except ValueError:
-            state.messages.append("Invalid task ID")
+            state.messages.append("[!] Priority must be a number")
             return
-        for task in state.tasks:
-            if task.id == task_id:
-                task.done = True
-                state.messages.append(f"[✓] Task {task_id} marked as done")
-                return
-        state.messages.append(f"[!] Task {task_id} not found")
+        tag = command_arguments[5] if len(command_arguments) > 5 else ""
 
-    elif cmd == "undone" and len(parts) == 2:
-        try:
-            task_id = int(parts[1])
-        except ValueError:
-            state.messages.append("Invalid task ID")
+    # Add the parsed task to state
+    state.add_task(name, comment, description, priority, tag)
+    state.messages.append(f"[+] Added task: {name}")
+
+
+def handle_done(command_arguments: list, state: AppState, console: Console):
+    """
+    Marks the specified task as done based on the task ID.
+
+    Args:
+        command_arguments (list): List of parsed input tokens, expecting task ID at index 1.
+        state (AppState): The current application state with all tasks.
+        console (Console): Rich console instance (not used directly here).
+    """
+    try:
+        task_id = int(command_arguments[1])  # Validate task ID is a number
+    except ValueError:
+        state.messages.append("Invalid task ID")
+        return
+
+    # Find the task and mark it as done
+    for task in state.tasks:
+        if task.id == task_id:
+            task.done = True
+            state.messages.append(f"[✓] Task {task_id} marked as done")
             return
-        for task in state.tasks:
-            if task.id == task_id:
-                task.done = False
-                state.messages.append(f"[✓] Task {task_id} unmarked")
-                return
-        state.messages.append(f"[!] Task {task_id} not found")
+
+    # Task with provided ID was not found
+    state.messages.append(f"[!] Task {task_id} not found")
+
+
+def handle_undone(command_arguments: list, state: AppState, console: Console):
+    """
+    Unmarks the specified task (sets 'done' to False) based on the task ID.
+
+    Args:
+        command_arguments (list): List of parsed input tokens, expecting task ID at index 1.
+        state (AppState): The current application state with all tasks.
+        console (Console): Rich console instance (not used directly here).
+    """
+    try:
+        task_id = int(command_arguments[1])  # Validate task ID is a number
+    except ValueError:
+        state.messages.append("Invalid task ID")
+        return
+
+    # Find the task and unmark it
+    for task in state.tasks:
+        if task.id == task_id:
+            task.done = False
+            state.messages.append(f"[✓] Task {task_id} unmarked")
+            return
+
+    # Task with provided ID was not found
+    state.messages.append(f"[!] Task {task_id} not found")
+
+
+def handle_command(command: str, state: AppState, console: Console):
+    try:
+        cmd, parts = parse_command(command, state, console)
+    except Exception as e:
+        return
+
+    if cmd == "add":
+        handle_add(parts, state, console)
+
+    elif cmd == "done":
+        handle_done(parts, state, console)
+
+    elif cmd == "undone":
+        handle_undone(parts, state, console)
 
     elif cmd == "remove" and len(parts) == 2:
         try:
@@ -176,6 +244,39 @@ def handle_command(command: str, state: AppState, console: Console):
             state.messages.append(f"[~] Filter set to: {arg}")
         else:
             state.messages.append(f"[!] Unknown filter: {arg}")
+
+    elif cmd == "show":
+        if len(parts) < 2:
+            state.messages.append(f'[!] Usage: show "task_id"')
+            return
+
+        try:
+            task_id = int(parts[1])
+        except ValueError:
+            state.messages.append("[!] Task ID must be a number")
+            return
+
+        task = next((t for t in state.tasks if t.id == task_id), None)
+        if not task:
+            state.messages.append(f"[!] Task {task_id} not found")
+            return
+
+        # Initialize table fresh each time
+        table = Table(show_header=False, box=None, pad_edge=False)
+        table.add_column("Field", style="bold cyan", no_wrap=True)
+        table.add_column("Value", style="white", max_width=60, overflow="fold")
+
+        table.add_row("Task", task.name)
+        table.add_row("Comment", task.comment)
+        table.add_row("Description", task.description)
+        table.add_row("Priority", str(task.priority))
+        table.add_row("Tag", task.tag)
+        table.add_row("Status", "✓" if task.done else "✗")
+
+        temp_console = Console(width=100, record=True)
+        temp_console.print(table)
+        text_output = temp_console.export_text()
+        state.messages.append(text_output)
 
     elif cmd == "tags":
         tags = {t.tag.strip().lower() for t in state.tasks if t.tag}
