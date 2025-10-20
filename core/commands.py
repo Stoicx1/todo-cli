@@ -2,13 +2,63 @@ from rich.console import Console
 from rich.table import Table
 from rich.prompt import Prompt
 from rich.panel import Panel
+from rich.text import Text
 from core.state import AppState
 import shlex
 from textwrap import dedent
+from datetime import datetime
 from assistant import Assistant
+from ui.feedback import (
+    show_success,
+    show_error,
+    show_info,
+    confirm,
+    OperationSummary,
+    ProgressSpinner
+)
+import sys
+
+# Unicode/emoji support detection for Windows compatibility
+USE_UNICODE = (
+    sys.stdout.encoding and
+    sys.stdout.encoding.lower() in ('utf-8', 'utf8')
+)
 
 
 gpt = Assistant()
+
+
+def get_relative_time(iso_timestamp: str) -> str:
+    """Convert ISO timestamp to relative time (e.g., '2 days ago')"""
+    if not iso_timestamp:
+        return "Unknown"
+
+    try:
+        dt = datetime.fromisoformat(iso_timestamp)
+        now = datetime.now()
+        diff = now - dt
+
+        seconds = diff.total_seconds()
+
+        if seconds < 60:
+            return "just now"
+        elif seconds < 3600:
+            minutes = int(seconds / 60)
+            return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+        elif seconds < 86400:
+            hours = int(seconds / 3600)
+            return f"{hours} hour{'s' if hours != 1 else ''} ago"
+        elif seconds < 2592000:  # 30 days
+            days = int(seconds / 86400)
+            return f"{days} day{'s' if days != 1 else ''} ago"
+        elif seconds < 31536000:  # 365 days
+            months = int(seconds / 2592000)
+            return f"{months} month{'s' if months != 1 else ''} ago"
+        else:
+            years = int(seconds / 31536000)
+            return f"{years} year{'s' if years != 1 else ''} ago"
+    except (ValueError, AttributeError):
+        return "Unknown"
 
 # Command shortcuts and aliases
 SHORTCUTS = {
@@ -259,6 +309,12 @@ def handle_command(command: str, state: AppState, console: Console):
             state.messages.append('[!] No valid task IDs provided\n    Example: remove 3 or remove 1-5')
             return
 
+        # Confirmation dialog for bulk delete (>3 tasks)
+        if len(task_ids) > 3:
+            if not confirm(f"Delete {len(task_ids)} tasks?", default=False):
+                state.messages.append("[yellow]Deletion cancelled[/yellow]")
+                return
+
         # Remove all found tasks
         removed = []
         not_found = []
@@ -271,7 +327,16 @@ def handle_command(command: str, state: AppState, console: Console):
             else:
                 not_found.append(task_id)
 
-        # Build result message
+        # Build result message using visual feedback
+        if removed or not_found:
+            OperationSummary.show_summary(
+                "tasks removed",
+                success_count=len(removed),
+                failure_count=len(not_found),
+                console=console
+            )
+
+        # Add to state messages for consistency
         if removed:
             if len(removed) == 1:
                 state.messages.append(f"[-] Removed task {removed[0]}")
@@ -385,22 +450,107 @@ def handle_command(command: str, state: AppState, console: Console):
             state.messages.append(f"[!] Task {task_id} not found")
             return
 
-        # Initialize table fresh each time
-        table = Table(show_header=False, box=None, pad_edge=False)
-        table.add_column("Field", style="bold cyan", no_wrap=True)
-        table.add_column("Value", style="white", max_width=60, overflow="fold")
+        # Build rich panel with task details
+        # Icons and emojis with ASCII fallback
+        if USE_UNICODE:
+            status_icon = "✓" if task.done else "⏳"
+            priority_icons = {1: "🔴", 2: "🟡", 3: "🟢"}
+            priority_icon = priority_icons.get(task.priority, "⚪")
+            tag_icon = "#"  # Safe, consistent width
+            created_icon = "📅"
+            completed_icon = "✅"
+            divider = "─" * 60
+        else:
+            status_icon = "[DONE]" if task.done else "[TODO]"
+            priority_icons = {1: "HIGH", 2: "MED", 3: "LOW"}
+            priority_icon = priority_icons.get(task.priority, "?")
+            tag_icon = "#"  # Same for ASCII
+            created_icon = "Created:"
+            completed_icon = "Completed:"
+            divider = "-" * 60
 
-        table.add_row("Task", task.name)
-        table.add_row("Comment", task.comment)
-        table.add_row("Description", task.description)
-        table.add_row("Priority", str(task.priority))
-        table.add_row("Tag", task.tag)
-        table.add_row("Status", "✓" if task.done else "✗")
+        # Status color and text
+        if task.done:
+            status_text = f"[bold green]{status_icon} DONE[/bold green]"
+        else:
+            status_text = f"[bold yellow]{status_icon} TODO[/bold yellow]"
 
-        temp_console = Console(width=100, record=True)
-        temp_console.print(table)
-        text_output = temp_console.export_text()
-        state.messages.append(text_output)
+        # Priority color and label
+        priority_labels = {1: "HIGH", 2: "MED", 3: "LOW"}
+        priority_label = priority_labels.get(task.priority, "???")
+        priority_colors = {1: "red", 2: "yellow", 3: "green"}
+        priority_color = priority_colors.get(task.priority, "white")
+
+        # Border color based on priority
+        border_colors = {1: "red", 2: "yellow", 3: "green"}
+        border_color = border_colors.get(task.priority, "cyan")
+
+        # Build panel content
+        content_lines = []
+
+        # Header: Task name + status
+        content_lines.append(f"[bold white]{task.name}[/bold white]  {status_text}")
+        content_lines.append("")
+
+        # Priority section
+        priority_display = f"{priority_icon} [{priority_color}]{priority_label}[/{priority_color}]"
+        content_lines.append(f"[bold cyan]Priority:[/bold cyan] {priority_display}")
+
+        # Tags section (if any)
+        if task.tags:
+            tags_display = ", ".join([f"[cyan]{t}[/cyan]" for t in task.tags])
+            content_lines.append(f"[bold cyan]Tags:[/bold cyan] {tag_icon} {tags_display}")
+
+        content_lines.append("")
+
+        # Details section (comment and description)
+        if task.comment:
+            content_lines.append(f"[bold cyan]Comment:[/bold cyan]")
+            content_lines.append(f"  [dim]{task.comment}[/dim]")
+            content_lines.append("")
+
+        if task.description:
+            content_lines.append(f"[bold cyan]Description:[/bold cyan]")
+            content_lines.append(f"  [dim italic]{task.description}[/dim italic]")
+            content_lines.append("")
+
+        # Divider before metadata
+        content_lines.append(f"[dim]{divider}[/dim]")
+
+        # Metadata section: timestamps
+        created_time = get_relative_time(task.created_at)
+        content_lines.append(f"[dim]{created_icon} Created {created_time}[/dim]")
+
+        if task.done and task.completed_at:
+            completed_time = get_relative_time(task.completed_at)
+            content_lines.append(f"[dim]{completed_icon} Completed {completed_time}[/dim]")
+
+        # Create panel with enhanced title
+        panel_content = "\n".join(content_lines)
+
+        # Make title more distinct with icon and styling
+        if USE_UNICODE:
+            panel_title = f"[bold {border_color}]📋 Task #{task.id}[/bold {border_color}]"
+        else:
+            panel_title = f"[bold {border_color}][ Task #{task.id} ][/bold {border_color}]"
+
+        # Instead of rendering to text, store the panel object directly
+        # This prevents border corruption from text conversion
+        from rich.box import ROUNDED
+
+        panel = Panel(
+            panel_content,
+            title=panel_title,
+            title_align="left",
+            border_style=border_color,
+            padding=(1, 2),
+            expand=False,
+            box=ROUNDED  # Use rounded box for cleaner borders
+        )
+
+        # Store panel as a special message type that will be rendered directly
+        # We'll use a marker to indicate this is a renderable object
+        state.messages.append(("__PANEL__", panel))
 
     elif cmd == "tags":
         tags = {t.tag.strip().lower() for t in state.tasks if t.tag}

@@ -16,12 +16,19 @@ from core.state import AppState
 from core.suggestions import LocalSuggestions
 from ui.renderer import render_dashboard
 from ui.command_palette import create_command_completer, get_available_tags
+from ui.task_forms import AddTaskModal, EditTaskModal
+from ui.feedback import show_success, show_error
+from ui.questionary_forms import questionary_add_task, questionary_edit_task
 
 # Unicode/emoji support detection for Windows compatibility
 USE_UNICODE = (
     sys.stdout.encoding and
     sys.stdout.encoding.lower() in ('utf-8', 'utf8')
 )
+
+# Form system selection
+USE_MODAL_FORMS = False  # Disabled: modal forms non-functional (fields don't accept input)
+USE_QUESTIONARY_FORMS = True  # Enabled: questionary forms work great!
 
 
 def inline_add_task(console):
@@ -170,10 +177,10 @@ def main():
             # Suggest command (quick suggestions)
             if user_input.lower() == "suggest":
                 suggestions = LocalSuggestions.get_smart_suggestions(state)
-                console.print("\n[bold cyan]💡 Smart Suggestions:[/bold cyan]")
+                console.print("\n[bold cyan]💡 Smart Suggestions:[/bold cyan]\n")
                 for suggestion in suggestions:
                     console.print(f"  {suggestion}")
-                console.print()
+                    console.print()  # Add blank line after each suggestion for better readability
                 continue
 
             # Tags with autocomplete
@@ -197,7 +204,7 @@ def main():
                 console.print("\n[yellow]Exiting...[/yellow]")
                 break
 
-            # Edit command with inline form
+            # Edit command with questionary form (or fallback to inline)
             if user_input.startswith("edit "):
                 parts = user_input.split()
                 if len(parts) == 2 and parts[1].isdigit():
@@ -205,8 +212,92 @@ def main():
                     task = next((t for t in state.tasks if t.id == task_id), None)
 
                     if task:
-                        filled_input = inline_edit_task(console, task)
-                        # Check if user cancelled
+                        if USE_QUESTIONARY_FORMS:
+                            try:
+                                # Use questionary interactive form
+                                result = questionary_edit_task(task, state)
+
+                                if result:
+                                    # Update task using result from form
+                                    task.name = result['name']
+                                    task.comment = result.get('comment', '')
+                                    task.description = result.get('description', '')
+                                    task.priority = result.get('priority', 2)
+
+                                    # Handle tags
+                                    if 'tag' in result:
+                                        tag_str = result['tag']
+                                        if ',' in tag_str:
+                                            tag_list = [t.strip().lower() for t in tag_str.split(',') if t.strip()]
+                                            tag_list = tag_list[:3]
+                                        else:
+                                            tag_list = [tag_str.strip().lower()] if tag_str.strip() else []
+
+                                        task.tag = tag_list[0] if tag_list else ""
+                                        task.tags = tag_list
+
+                                    console.clear()
+                                    render_dashboard(console, state)
+                                    show_success(f"Task #{task_id} updated successfully!", console)
+                                else:
+                                    # User cancelled (Ctrl+C or ESC)
+                                    console.clear()
+                                    render_dashboard(console, state)
+                                    console.print("[yellow]Cancelled[/yellow]")
+                            except Exception as e:
+                                # Fallback to inline form if questionary fails
+                                console.print(f"[yellow]Questionary form error: {e}. Using inline form...[/yellow]")
+                                filled_input = inline_edit_task(console, task)
+                                if filled_input is None:
+                                    console.clear()
+                                    render_dashboard(console, state)
+                                    continue
+                                handle_command(filled_input, state, console)
+                                console.clear()
+                                render_dashboard(console, state)
+                        else:
+                            # Use inline form (questionary disabled)
+                            filled_input = inline_edit_task(console, task)
+                            if filled_input is None:
+                                console.clear()
+                                render_dashboard(console, state)
+                                continue
+                            handle_command(filled_input, state, console)
+                            console.clear()
+                            render_dashboard(console, state)
+                        continue
+                    else:
+                        console.print(f"[red]Task with ID {task_id} not found.[/red]")
+                        continue
+
+            # Add command with questionary form (or fallback to inline)
+            if user_input.strip() == "add":
+                if USE_QUESTIONARY_FORMS:
+                    try:
+                        # Use questionary interactive form
+                        result = questionary_add_task(state)
+
+                        if result:
+                            # Add task using result from form
+                            state.add_task(
+                                name=result['name'],
+                                comment=result.get('comment', ''),
+                                description=result.get('description', ''),
+                                priority=result.get('priority', 2),
+                                tag=result.get('tag', '')
+                            )
+                            console.clear()
+                            render_dashboard(console, state)
+                            show_success(f"Task '{result['name']}' added successfully!", console)
+                        else:
+                            # User cancelled (Ctrl+C or ESC)
+                            console.clear()
+                            render_dashboard(console, state)
+                            console.print("[yellow]Cancelled[/yellow]")
+                    except Exception as e:
+                        # Fallback to inline form if questionary fails
+                        console.print(f"[yellow]Questionary form error: {e}. Using inline form...[/yellow]")
+                        filled_input = inline_add_task(console)
                         if filled_input is None:
                             console.clear()
                             render_dashboard(console, state)
@@ -214,22 +305,16 @@ def main():
                         handle_command(filled_input, state, console)
                         console.clear()
                         render_dashboard(console, state)
+                else:
+                    # Use inline form (questionary disabled)
+                    filled_input = inline_add_task(console)
+                    if filled_input is None:
+                        console.clear()
+                        render_dashboard(console, state)
                         continue
-                    else:
-                        console.print(f"[red]Task with ID {task_id} not found.[/red]")
-                        continue
-
-            # Add command with inline form
-            if user_input.strip() == "add":
-                filled_input = inline_add_task(console)
-                # Check if user cancelled
-                if filled_input is None:
+                    handle_command(filled_input, state, console)
                     console.clear()
                     render_dashboard(console, state)
-                    continue
-                handle_command(filled_input, state, console)
-                console.clear()
-                render_dashboard(console, state)
                 continue
 
             # Handle all other commands

@@ -1,6 +1,7 @@
 # Core UI Libraries
 rich==14.0.0
 prompt-toolkit==3.0.50
+questionary>=2.1.0,<3.0.0
 
 # OpenAI Integration (Optional)
 openai>=1.70.0,<2.0.0

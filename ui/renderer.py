@@ -91,14 +91,16 @@ def render_dashboard(console: Console, state: AppState):
         box=SIMPLE,  # Clean lines, no heavy borders
         show_edge=False  # Remove outer borders
     )
-    table.add_column("ID", justify="center", no_wrap=True, style="dim")
+    # Column order optimized for wide screens: ID | Priority | Tags | Task
+    table.add_column("ID", justify="center", no_wrap=True, style="dim", width=4)
+    table.add_column("Priority", justify="center", no_wrap=True, width=10)
+    table.add_column("Tags", justify="left", style="cyan", width=20)
     table.add_column("Task", justify="left")
-    table.add_column("Tags", justify="left", style="cyan")
-    table.add_column("Priority", justify="center")
 
     for idx, task in enumerate(tasks):
-        # Subtle row shading instead of harsh black/white alternation
-        row_style = "" if idx % 2 == 0 else "dim"
+        # Alternating row background colors for better tracking on wide screens
+        # Even rows: darker gray, Odd rows: lighter gray
+        row_style = "on grey11" if idx % 2 == 0 else "on grey15"
 
         # Status and priority icons with ASCII fallback
         if USE_UNICODE:
@@ -126,21 +128,24 @@ def render_dashboard(console: Console, state: AppState):
         # Handle multiple tags (up to 3, comma-separated)
         tags_display = task.get_tags_display()
 
+        # Column order: ID | Priority | Tags | Task (reordered for better readability)
         table.add_row(
             str(task.id),
-            task_display,
-            tags_display,
             priority_display,
+            tags_display,
+            task_display,
             style=row_style,
         )
 
-        # Detail view - show comment and description with indentation
+        # Detail view - show comment and description under Task column
         if mode == "detail":
             arrow = "→" if USE_UNICODE else "->"
             if task.comment:
-                table.add_row("", f"  [dim]{arrow} {task.comment}[/dim]", "", "", style=row_style)
+                # Empty cells for ID, Priority, Tags; comment under Task column
+                table.add_row("", "", "", f"  [dim]{arrow} {task.comment}[/dim]", style=row_style)
             if task.description:
-                table.add_row("", f"    [dim italic]{task.description}[/dim italic]", "", "", style=row_style)
+                # Empty cells for ID, Priority, Tags; description under Task column
+                table.add_row("", "", "", f"    [dim italic]{task.description}[/dim italic]", style=row_style)
 
     console.clear()
     console.print(table)
@@ -151,5 +156,15 @@ def render_dashboard(console: Console, state: AppState):
     # Show messages if any (in a compact way)
     if state.messages:
         last_msg = state.messages[-1]
-        # Show message inline, not in a panel
-        console.print(f"[dim]💬 {last_msg}[/dim]\n")
+
+        # Check if message is a special renderable object (like Panel)
+        if isinstance(last_msg, tuple) and len(last_msg) == 2 and last_msg[0] == "__PANEL__":
+            # Render the panel directly without text conversion
+            console.print(last_msg[1])
+            console.print()  # Add spacing after panel
+        else:
+            # Show regular message inline
+            if USE_UNICODE:
+                console.print(f"[dim]💬 {last_msg}[/dim]\n")
+            else:
+                console.print(f"[dim]{last_msg}[/dim]\n")
