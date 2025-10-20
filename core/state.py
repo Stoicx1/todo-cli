@@ -30,14 +30,24 @@ class AppState:
             description (str): A more detailed task description.
             priority (int): Task priority (lower = higher priority).
             tag (str): A label/tag to categorize the task.
+                      Can be comma-separated for multiple tags (up to 3).
+                      Example: "backend, api, urgent"
         """
+        # Parse tags - split by comma if multiple tags provided
+        if ',' in tag:
+            tag_list = [t.strip().lower() for t in tag.split(',') if t.strip()]
+            tag_list = tag_list[:3]  # Limit to 3 tags maximum
+        else:
+            tag_list = [tag.strip().lower()] if tag.strip() else []
+
         task = Task(
             id=self.next_id,
             name=name.strip(),
             comment=comment.strip(),
             description=description.strip(),
             priority=priority,
-            tag=tag.strip().lower(),
+            tag=tag_list[0] if tag_list else "",  # Legacy field (first tag)
+            tags=tag_list  # New field (list of tags)
         )
         self.tasks.append(task)
         self.next_id += 1

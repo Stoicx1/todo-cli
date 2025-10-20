@@ -1,0 +1,9 @@
+# Core UI Libraries
+rich==14.0.0
+prompt-toolkit==3.0.50
+
+# OpenAI Integration (Optional)
+openai>=1.70.0,<2.0.0
+
+# Environment Variables
+python-dotenv>=1.0.0,<2.0.0

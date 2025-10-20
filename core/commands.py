@@ -10,6 +10,54 @@ from assistant import Assistant
 
 gpt = Assistant()
 
+# Command shortcuts and aliases
+SHORTCUTS = {
+    # Single-letter shortcuts
+    'd': 'done',
+    'u': 'undone',
+    'r': 'remove',
+    'e': 'edit',
+    's': 'show',
+    'n': 'next',
+    'p': 'prev',
+    'f': 'filter',
+    't': 'tags',
+    'h': 'help',
+    'x': 'exit',
+    # Aliases
+    'delete': 'remove',  # delete is alias for remove
+    'del': 'remove'      # del is also alias for remove
+}
+
+
+def parse_task_ids(id_args: list) -> list:
+    """
+    Parse task IDs from arguments, supporting:
+    - Single IDs: 1 2 3
+    - Ranges: 1-5
+    - Mixed: 1,3,5-8
+    Returns list of unique integer IDs
+    """
+    ids = set()
+    for arg in id_args:
+        # Handle comma-separated IDs
+        for part in arg.replace(',', ' ').split():
+            # Handle ranges (e.g., 1-5)
+            if '-' in part:
+                try:
+                    start, end = part.split('-')
+                    start, end = int(start.strip()), int(end.strip())
+                    ids.update(range(start, end + 1))
+                except ValueError:
+                    continue  # Skip invalid ranges
+            else:
+                # Single ID
+                try:
+                    ids.add(int(part.strip()))
+                except ValueError:
+                    continue  # Skip invalid IDs
+    return sorted(list(ids))
+
 
 def parse_command(command: str, state: AppState, console: Console):
     parts = shlex.split(command.strip())
@@ -17,8 +65,15 @@ def parse_command(command: str, state: AppState, console: Console):
         state.messages = []
         return
     state.messages = []
+
+    # Expand shortcuts
+    cmd = parts[0].lower()
+    if cmd in SHORTCUTS:
+        parts[0] = SHORTCUTS[cmd]
+        cmd = parts[0]
+
     state.messages.append(f"[debug] Parsed parts: {parts}")
-    return parts[0].lower(), parts
+    return cmd, parts
 
 
 def handle_add(command_arguments: list, state: AppState, console: Console):
@@ -40,29 +95,26 @@ def handle_add(command_arguments: list, state: AppState, console: Console):
     # Ensure the task name is provided
     if len(command_arguments) < 2:
         state.messages.append(
-            '[!] Usage: add "name" | "comment" | "description" | priority | tag'
+            '[!] Usage: add "name" ["comment"] ["description"] [priority] ["tag"]\n    Example: add "Fix bug" "urgent" "Fix the login issue" 1 "work"'
         )
         return
 
-    # Case: only name provided
-    if len(command_arguments) == 2:
-        name = command_arguments[1]
-        comment = ""
-        description = ""
-        priority = 3
-        tag = ""
+    # Initialize all variables with defaults (CRITICAL BUG FIX)
+    name = command_arguments[1]
+    comment = ""
+    description = ""
+    priority = 3
+    tag = ""
 
     # Case: name and either priority or tag
     if len(command_arguments) == 3:
-        name = command_arguments[1]
         if command_arguments[2].isdigit():
             priority = int(command_arguments[2])
         else:
             tag = command_arguments[2]
 
     # Case: name + priority+tag or comment+description
-    if len(command_arguments) == 4:
-        name = command_arguments[1]
+    elif len(command_arguments) == 4:
         if command_arguments[2].isdigit():
             priority = int(command_arguments[2])
             tag = command_arguments[3]
@@ -71,14 +123,13 @@ def handle_add(command_arguments: list, state: AppState, console: Console):
             description = command_arguments[3]
 
     # Case: full input (name, comment, description, priority, tag)
-    if len(command_arguments) >= 5:
-        name = command_arguments[1]
+    elif len(command_arguments) >= 5:
         comment = command_arguments[2]
         description = command_arguments[3]
         try:
             priority = int(command_arguments[4])  # Validate priority is a number
         except ValueError:
-            state.messages.append("[!] Priority must be a number")
+            state.messages.append(f'[!] Priority must be a number, got: "{command_arguments[4]}"\n    Example: add "Task" "comment" "description" 1 "tag"')
             return
         tag = command_arguments[5] if len(command_arguments) > 5 else ""
 
@@ -89,54 +140,96 @@ def handle_add(command_arguments: list, state: AppState, console: Console):
 
 def handle_done(command_arguments: list, state: AppState, console: Console):
     """
-    Marks the specified task as done based on the task ID.
+    Marks the specified task(s) as done based on the task ID(s).
+    Supports bulk operations: done 1 2 3, done 1-5, done 1,3,5-8
 
     Args:
-        command_arguments (list): List of parsed input tokens, expecting task ID at index 1.
+        command_arguments (list): List of parsed input tokens, expecting task ID(s) starting at index 1.
         state (AppState): The current application state with all tasks.
         console (Console): Rich console instance (not used directly here).
     """
-    try:
-        task_id = int(command_arguments[1])  # Validate task ID is a number
-    except ValueError:
-        state.messages.append("Invalid task ID")
+    from datetime import datetime
+
+    # Check if task ID was provided
+    if len(command_arguments) < 2:
+        state.messages.append('[!] Usage: done <id> [id2 id3...]\n    Example: done 3\n    Bulk: done 1 2 3 or done 1-5')
         return
 
-    # Find the task and mark it as done
-    for task in state.tasks:
-        if task.id == task_id:
-            task.done = True
-            state.messages.append(f"[✓] Task {task_id} marked as done")
-            return
+    # Parse all task IDs (supports ranges and multiple IDs)
+    task_ids = parse_task_ids(command_arguments[1:])
 
-    # Task with provided ID was not found
-    state.messages.append(f"[!] Task {task_id} not found")
+    if not task_ids:
+        state.messages.append('[!] No valid task IDs provided\n    Example: done 3 or done 1-5')
+        return
+
+    # Mark all found tasks as done
+    marked = []
+    not_found = []
+
+    for task_id in task_ids:
+        task = next((t for t in state.tasks if t.id == task_id), None)
+        if task:
+            task.done = True
+            task.completed_at = datetime.now().isoformat()
+            marked.append(task_id)
+        else:
+            not_found.append(task_id)
+
+    # Build result message
+    if marked:
+        if len(marked) == 1:
+            state.messages.append(f"[✓] Task {marked[0]} marked as done")
+        else:
+            state.messages.append(f"[✓] Tasks {', '.join(map(str, marked))} marked as done")
+
+    if not_found:
+        state.messages.append(f"[!] Tasks not found: {', '.join(map(str, not_found))}")
 
 
 def handle_undone(command_arguments: list, state: AppState, console: Console):
     """
-    Unmarks the specified task (sets 'done' to False) based on the task ID.
+    Unmarks the specified task(s) (sets 'done' to False) based on the task ID(s).
+    Supports bulk operations: undone 1 2 3, undone 1-5, undone 1,3,5-8
 
     Args:
-        command_arguments (list): List of parsed input tokens, expecting task ID at index 1.
+        command_arguments (list): List of parsed input tokens, expecting task ID(s) starting at index 1.
         state (AppState): The current application state with all tasks.
         console (Console): Rich console instance (not used directly here).
     """
-    try:
-        task_id = int(command_arguments[1])  # Validate task ID is a number
-    except ValueError:
-        state.messages.append("Invalid task ID")
+    # Check if task ID was provided
+    if len(command_arguments) < 2:
+        state.messages.append('[!] Usage: undone <id> [id2 id3...]\n    Example: undone 3\n    Bulk: undone 1 2 3 or undone 1-5')
         return
 
-    # Find the task and unmark it
-    for task in state.tasks:
-        if task.id == task_id:
-            task.done = False
-            state.messages.append(f"[✓] Task {task_id} unmarked")
-            return
+    # Parse all task IDs (supports ranges and multiple IDs)
+    task_ids = parse_task_ids(command_arguments[1:])
 
-    # Task with provided ID was not found
-    state.messages.append(f"[!] Task {task_id} not found")
+    if not task_ids:
+        state.messages.append('[!] No valid task IDs provided\n    Example: undone 3 or undone 1-5')
+        return
+
+    # Unmark all found tasks
+    unmarked = []
+    not_found = []
+
+    for task_id in task_ids:
+        task = next((t for t in state.tasks if t.id == task_id), None)
+        if task:
+            task.done = False
+            task.completed_at = ""  # Clear completion timestamp
+            unmarked.append(task_id)
+        else:
+            not_found.append(task_id)
+
+    # Build result message
+    if unmarked:
+        if len(unmarked) == 1:
+            state.messages.append(f"[✓] Task {unmarked[0]} unmarked")
+        else:
+            state.messages.append(f"[✓] Tasks {', '.join(map(str, unmarked))} unmarked")
+
+    if not_found:
+        state.messages.append(f"[!] Tasks not found: {', '.join(map(str, not_found))}")
 
 
 def handle_command(command: str, state: AppState, console: Console):
@@ -154,18 +247,39 @@ def handle_command(command: str, state: AppState, console: Console):
     elif cmd == "undone":
         handle_undone(parts, state, console)
 
-    elif cmd == "remove" and len(parts) == 2:
-        try:
-            task_id = int(parts[1])
-        except ValueError:
-            state.messages.append("Invalid task ID")
+    elif cmd == "remove":
+        if len(parts) < 2:
+            state.messages.append('[!] Usage: remove <id> [id2 id3...]\n    Example: remove 3\n    Bulk: remove 1 2 3 or remove 1-5')
             return
-        before = len(state.tasks)
-        state.tasks = [t for t in state.tasks if t.id != task_id]
-        if len(state.tasks) < before:
-            state.messages.append(f"[-] Removed task {task_id}")
-        else:
-            state.messages.append(f"[!] Task {task_id} not found")
+
+        # Parse all task IDs (supports ranges and multiple IDs)
+        task_ids = parse_task_ids(parts[1:])
+
+        if not task_ids:
+            state.messages.append('[!] No valid task IDs provided\n    Example: remove 3 or remove 1-5')
+            return
+
+        # Remove all found tasks
+        removed = []
+        not_found = []
+
+        for task_id in task_ids:
+            task = next((t for t in state.tasks if t.id == task_id), None)
+            if task:
+                state.tasks.remove(task)
+                removed.append(task_id)
+            else:
+                not_found.append(task_id)
+
+        # Build result message
+        if removed:
+            if len(removed) == 1:
+                state.messages.append(f"[-] Removed task {removed[0]}")
+            else:
+                state.messages.append(f"[-] Removed tasks {', '.join(map(str, removed))}")
+
+        if not_found:
+            state.messages.append(f"[!] Tasks not found: {', '.join(map(str, not_found))}")
 
     elif cmd == "edit":
         if len(parts) < 2:
@@ -196,7 +310,17 @@ def handle_command(command: str, state: AppState, console: Console):
             if len(parts) > 5 and parts[5].isdigit():
                 task.priority = int(parts[5])
             if len(parts) > 6 and parts[6] != "-":
-                task.tag = parts[6].lower().strip()
+                # Parse tags - split by comma if multiple tags provided
+                tag_str = parts[6]
+                if ',' in tag_str:
+                    tag_list = [t.strip().lower() for t in tag_str.split(',') if t.strip()]
+                    tag_list = tag_list[:3]  # Limit to 3 tags
+                else:
+                    tag_list = [tag_str.strip().lower()] if tag_str.strip() else []
+
+                # Update both legacy and new tag fields
+                task.tag = tag_list[0] if tag_list else ""
+                task.tags = tag_list
 
             state.messages.append(f"[~] Task {task_id} updated")
         except Exception as e:
@@ -299,52 +423,43 @@ def handle_command(command: str, state: AppState, console: Console):
         gpt.console = console  # use your current rich console
         state.messages.append(dedent(gpt.ask(state.tasks, user_prompt)))
 
+    elif cmd == "save":
+        # Manual save command
+        state.save_to_file("tasks.json", console)
+        state.messages.append("[💾] Tasks saved successfully")
+
     elif cmd == "help":
         state.messages.append(
             (
                 dedent(
                     """
-[bold cyan]Available Commands:[/bold cyan]
+[bold cyan]💡 Quick Start:[/bold cyan]
+Type [bold magenta]/[/bold magenta] to see all commands with descriptions in a dropdown menu!
 
-[bold yellow]add[/bold yellow] "name" | "comment" | "description" | priority | tag
-    Add a new task
+[bold cyan]📝 Common Commands:[/bold cyan]
+  [yellow]add[/yellow]              →  Add a new task (opens form)
+  [yellow]done[/yellow] <id>        →  Mark task as complete
+  [yellow]edit[/yellow] <id>        →  Edit existing task
+  [yellow]remove[/yellow] <id>      →  Delete a task
 
-[bold yellow]edit[/bold yellow] <id> "name" "comment" "description" priority "tag"
-    Edit an existing task. Use "-" to skip a field
+[bold cyan]🔍 Filtering & Sorting:[/bold cyan]
+  [yellow]filter[/yellow] done      →  Show completed tasks only
+  [yellow]filter[/yellow] undone    →  Show incomplete tasks only
+  [yellow]filter[/yellow] tag:name  →  Filter by tag
+  [yellow]sort[/yellow] priority    →  Sort by priority
+  [yellow]tags[/yellow]             →  List all tags
 
-[bold yellow]done[/bold yellow] <id>
-    Mark task as done
+[bold cyan]🤖 AI Features (No API Key Needed!):[/bold cyan]
+  [yellow]insights[/yellow]         →  Comprehensive task analysis
+  [yellow]suggest[/yellow]          →  Smart recommendations
 
-[bold yellow]undone[/bold yellow] <id>
-    Mark task as not done
+[bold cyan]🎨 Other:[/bold cyan]
+  [yellow]view[/yellow] compact     →  Switch to compact view (20/page)
+  [yellow]next[/yellow] / [yellow]prev[/yellow]    →  Navigate pages
+  [yellow]help[/yellow]             →  Show this help
+  [yellow]exit[/yellow]             →  Save and quit
 
-[bold yellow]remove[/bold yellow] <id>
-    Remove task by ID
-
-[bold yellow]view[/bold yellow] compact | detail
-    Toggle between compact and detailed view
-
-[bold yellow]next[/bold yellow] / [bold yellow]prev[/bold yellow]
-    Paginate through task pages
-
-[bold yellow]sort[/bold yellow] id | name | priority
-    Sort tasks by ID, name, or priority (ascending)
-
-[bold yellow]filter[/bold yellow] none | done | undone | tag:<tag>
-    Filter tasks by status or tag
-    Example: filter tag:psdc
-
-[bold yellow]tags[/bold yellow]
-    Show all unique tags in use
-
-[bold yellow]?[/bold yellow]
-    Ask for an assistance
-
-[bold yellow]help[/bold yellow]
-    Show this help message
-
-[bold yellow]quit[/bold yellow] / [bold yellow]exit[/bold yellow]
-    Exit the application
+[dim]💡 Tip: Start typing any command for auto-complete suggestions![/dim]
         """
                 )
             )
