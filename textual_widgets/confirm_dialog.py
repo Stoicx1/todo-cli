@@ -80,7 +80,10 @@ class ConfirmDialog(ModalScreen[bool]):
 
     def on_mount(self) -> None:
         """Focus cancel button by default (safer)"""
-        self.query_one("#cancel", Button).focus()
+        # Cache button refs for quick focus switching
+        self._confirm_btn: Button = self.query_one("#confirm", Button)
+        self._cancel_btn: Button = self.query_one("#cancel", Button)
+        self._cancel_btn.focus()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button press"""
@@ -90,8 +93,37 @@ class ConfirmDialog(ModalScreen[bool]):
             self.dismiss(False)
 
     def on_key(self, event) -> None:
-        """Handle keyboard shortcuts"""
-        if event.key == "y":
+        """Handle keyboard shortcuts and focus navigation"""
+        key = getattr(event, "key", "")
+
+        # Confirm / cancel hotkeys
+        if key == "y":
             self.dismiss(True)
-        elif event.key == "n" or event.key == "escape":
+            event.prevent_default()
+            return
+        if key in ("n", "escape"):
             self.dismiss(False)
+            event.prevent_default()
+            return
+
+        # Enter triggers the focused button
+        if key in ("enter", "space"):
+            focused = self.screen.focused
+            if focused is self._confirm_btn:
+                self.dismiss(True)
+            elif focused is self._cancel_btn:
+                self.dismiss(False)
+            else:
+                # Default to cancel if no button is focused
+                self.dismiss(False)
+            event.prevent_default()
+            return
+
+        # Tab cycles focus between buttons
+        if key in ("tab", "shift+tab"):
+            if self._confirm_btn.has_focus:
+                self._cancel_btn.focus()
+            else:
+                self._confirm_btn.focus()
+            event.prevent_default()
+            return
