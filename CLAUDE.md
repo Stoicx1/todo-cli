@@ -37,7 +37,36 @@ class TodoTextualApp(App):
 
 **Never use `CSS_PATH`** - it will cause caching issues. Always keep CSS inline.
 
-**See:** `TEXTUAL_TROUBLESHOOTING.md` for detailed documentation on this and other Textual issues.
+**See:** `docs/technical/TEXTUAL_TROUBLESHOOTING.md` for detailed documentation on this and other Textual issues.
+
+## Documentation Structure (Updated Oct 2025)
+
+Documentation is organized in the `docs/` folder:
+
+- **`docs/technical/`** - Technical references for developers
+  - TEXTUAL_TROUBLESHOOTING.md - Common issues and solutions
+  - TEXTUAL_QUICKSTART.md - Quick start for Textual development
+  - TEXTUAL_AI_CHAT.md - AI chat implementation details
+  - SECURITY.md - Security considerations
+
+- **`docs/history/`** - Historical implementation records (31 files)
+  - Bug fix documentation (BUGFIX_*.md)
+  - Phase completion reports (PHASE*.md)
+  - Implementation summaries and feature completion docs
+  - Performance analysis and reviews
+
+- **`docs/tasks/`** - Task planning documents (7 files)
+  - Feature planning files (task-*.md)
+  - Implementation roadmaps
+
+- **`docs/README.md`** - Documentation organization guide
+
+**User-facing docs remain in root:**
+- readme.md - Main entry point
+- USAGE_GUIDE.md - Command reference
+- QUICK_REFERENCE.md - Cheat sheet
+- MIGRATION_GUIDE.md - UI switching guide
+- CLAUDE.md - This file (project instructions)
 
 ## Architecture
 

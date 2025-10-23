@@ -475,11 +475,12 @@ This is a personal project, but suggestions and improvements are welcome!
 - ✅ Windows CP1252 encoding support
 
 **Documentation:**
-- `BUGFIX_COMPREHENSIVE_TEXTUAL_2025.md` - Complete bugfix documentation (Oct 2025) 🆕
+- `docs/history/BUGFIX_COMPREHENSIVE_TEXTUAL_2025.md` - Complete bugfix documentation (Oct 2025) 🆕
 - `MIGRATION_GUIDE.md` - Switching from Rich to Textual UI
-- `TEXTUAL_AI_CHAT.md` - Technical AI chat documentation
-- `TEXTUAL_TROUBLESHOOTING.md` - Textual CSS caching and resolved issues
-- `TEXTUAL_QUICKSTART.md` - Quick start guide for Textual UI
+- `docs/technical/TEXTUAL_AI_CHAT.md` - Technical AI chat documentation
+- `docs/technical/TEXTUAL_TROUBLESHOOTING.md` - Textual CSS caching and resolved issues
+- `docs/technical/TEXTUAL_QUICKSTART.md` - Quick start guide for Textual UI
 - `USAGE_GUIDE.md` - Complete command reference
 - `QUICK_REFERENCE.md` - One-page cheat sheet
-- `CLAUDE.md` - Developer/architecture documentation 
+- `CLAUDE.md` - Developer/architecture documentation
+- `docs/README.md` - Documentation structure and organization 🆕 

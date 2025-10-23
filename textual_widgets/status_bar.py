@@ -3,8 +3,6 @@ StatusBar Widget - Displays task statistics and pagination info
 """
 
 from textual.widgets import Static
-from rich.text import Text
-
 from core.state import AppState
 
 
@@ -21,8 +19,8 @@ class StatusBar(Static):
     """
 
     def __init__(self, **kwargs):
-        """Initialize status bar"""
-        super().__init__("", **kwargs)
+        """Initialize status bar with placeholder"""
+        super().__init__("Loading status...", **kwargs)
 
     def update_from_state(self, state: AppState) -> None:
         """
@@ -31,6 +29,9 @@ class StatusBar(Static):
         Args:
             state: Application state
         """
+        from debug_logger import debug_log
+        debug_log.debug(f"StatusBar.update_from_state() called with {len(state.tasks)} tasks")
+
         # Calculate stats
         total = len(state.tasks)
         completed = sum(1 for t in state.tasks if t.done)
@@ -43,48 +44,33 @@ class StatusBar(Static):
         current_page = state.page + 1
         shown = len(state.get_current_page_tasks())
 
-        # Build status text
-        status_text = Text()
+        # Build status text as markup string (Textual supports Rich markup)
+        order_arrow = "↑" if state.sort_order == "asc" else "↓"
 
         # Line 1: Navigation and context
-        status_text.append(f"Page ", style="white")
-        status_text.append(f"{current_page}", style="cyan bold")
-        status_text.append(f"/{total_pages}", style="dim")
-        status_text.append("  •  ", style="dim")
-
-        status_text.append(f"{shown}", style="white bold")
-        status_text.append(f"/{total_filtered}", style="dim")
-        status_text.append(" showing", style="white")
-        status_text.append("  •  ", style="dim")
-
-        status_text.append(f"{state.view_mode}", style="magenta")
-        status_text.append("  •  ", style="dim")
-
-        # Sort indicator
-        order_arrow = "↑" if state.sort_order == "asc" else "↓"
-        status_text.append(f"{order_arrow} ", style="blue")
-        status_text.append(f"{state.sort}", style="blue")
-        status_text.append(f" ({state.sort_order})", style="dim")
-
-        status_text.append("\n")
+        line1 = (
+            f"Page [cyan bold]{current_page}[/cyan bold][dim]/{total_pages}[/dim]  •  "
+            f"[bold]{shown}[/bold][dim]/{total_filtered}[/dim] showing  •  "
+            f"[magenta]{state.view_mode}[/magenta]  •  "
+            f"[blue]{order_arrow} {state.sort}[/blue] [dim]({state.sort_order})[/dim]"
+        )
 
         # Line 2: Task statistics
-        status_text.append(f"{total}", style="cyan bold")
-        status_text.append(" tasks", style="dim")
-        status_text.append("  •  ", style="dim")
-
-        status_text.append(f"{completed}", style="green bold")
-        status_text.append(" done", style="dim")
-        status_text.append("  •  ", style="dim")
-
-        status_text.append(f"{incomplete}", style="yellow bold")
-        status_text.append(" todo", style="dim")
+        line2 = (
+            f"[cyan bold]{total}[/cyan bold] tasks  •  "
+            f"[green bold]{completed}[/green bold] done  •  "
+            f"[yellow bold]{incomplete}[/yellow bold] todo"
+        )
 
         # Add filter info if active
         if state.filter != "none":
-            status_text.append("  •  ", style="dim")
-            status_text.append("Filter: ", style="white")
-            status_text.append(f"{state.filter}", style="yellow")
+            line2 += f"  •  Filter: [yellow]{state.filter}[/yellow]"
+
+        # Combine lines
+        status_markup = f"{line1}\n{line2}"
+
+        debug_log.debug(f"StatusBar content: {status_markup[:100]}")
 
         # Update widget content
-        self.update(status_text)
+        self.update(status_markup)
+        self.refresh(layout=True)

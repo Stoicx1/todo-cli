@@ -17,7 +17,8 @@
       "Bash(if [ -f .env ])",
       "Bash(then grep -q \"OPENAI_API_KEY\" .env)",
       "Bash(else echo \"✗ .env file missing\")",
-      "Bash(fi)"
+      "Bash(fi)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

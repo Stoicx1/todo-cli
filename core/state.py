@@ -9,6 +9,9 @@ import json
 from utils.tag_parser import parse_tags
 from core.file_safety import SafeFileManager, FileLockTimeoutError, FileCorruptionError
 
+# AI Conversation limits
+MAX_CONVERSATION_MESSAGES = 100  # Maximum messages to keep in conversation history
+
 
 class AppState:
     def __init__(self):
@@ -43,9 +46,11 @@ class AppState:
         # File safety manager (initialized on first save/load)
         self._file_manager: Optional[SafeFileManager] = None
 
-        # Filtered task cache (performance optimization)
+        # Filtered task cache (performance optimization with dirty flag)
+        # Dirty flag approach: O(1) check instead of O(n) tuple generation
         self._filtered_tasks_cache: Optional[list[Task]] = None
-        self._filter_cache_key: Optional[tuple] = None
+        self._filter_cache_dirty: bool = True  # True = needs recalculation
+        self._current_filter: str = "none"  # Track filter changes
 
     def add_task(
         self, name: str, comment: str, description: str, priority: int, tag: str
@@ -263,36 +268,36 @@ class AppState:
 
         Returns:
             Filtered list of tasks based on current filter
-        """
-        # Generate cache key from current state
-        # Include: filter string, task count, task IDs, done status
-        current_key = (
-            self.filter,
-            len(self.tasks),
-            tuple(t.id for t in self.tasks),
-            tuple(t.done for t in self.tasks)
-        )
 
-        # Return cached result if key matches
-        if self._filter_cache_key == current_key and self._filtered_tasks_cache is not None:
+        Performance: O(1) dirty flag check vs O(n) tuple generation
+        """
+        # Check if filter setting changed (requires recalculation)
+        filter_changed = self._current_filter != self.filter
+        if filter_changed:
+            self._current_filter = self.filter
+            self._filter_cache_dirty = True
+
+        # Return cached result if still valid (dirty flag = False)
+        if not self._filter_cache_dirty and self._filtered_tasks_cache is not None:
             return self._filtered_tasks_cache
 
-        # Cache miss - recalculate
+        # Cache miss or dirty - recalculate
         filtered = self.get_filter_tasks(self.tasks)
 
-        # Update cache
-        self._filter_cache_key = current_key
+        # Update cache and mark as clean
         self._filtered_tasks_cache = filtered
+        self._filter_cache_dirty = False
 
         return filtered
 
     def invalidate_filter_cache(self) -> None:
         """
-        Manually invalidate filter cache.
-        Called when tasks are modified outside normal add/remove flow.
+        Mark filter cache as dirty for recalculation.
+        Called when tasks are modified (add/remove/edit/done/undone).
+
+        Performance: O(1) flag set vs O(n) tuple comparison
         """
-        self._filter_cache_key = None
-        self._filtered_tasks_cache = None
+        self._filter_cache_dirty = True
 
     def get_sorted_tasks(self, tasks):
         """
@@ -520,7 +525,10 @@ class AppState:
 
     def add_ai_message(self, role: str, content: str) -> AIMessage:
         """
-        Add a message to the AI conversation history
+        Add a message to the AI conversation history with automatic pruning
+
+        Maintains a maximum of MAX_CONVERSATION_MESSAGES messages in memory
+        by removing oldest messages when the limit is exceeded.
 
         Args:
             role: "user" or "assistant"
@@ -531,6 +539,13 @@ class AppState:
         """
         message = AIMessage(role=role, content=content)
         self.ai_conversation.append(message)
+
+        # Prune old messages if we exceed the limit
+        if len(self.ai_conversation) > MAX_CONVERSATION_MESSAGES:
+            # Remove oldest messages to stay within limit
+            messages_to_remove = len(self.ai_conversation) - MAX_CONVERSATION_MESSAGES
+            self.ai_conversation = self.ai_conversation[messages_to_remove:]
+
         return message
 
     def clear_conversation(self) -> None:

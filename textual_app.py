@@ -21,6 +21,7 @@ from textual_widgets.task_form import TaskForm
 from textual_widgets.confirm_dialog import ConfirmDialog
 from textual_widgets.ai_chat_panel import AIChatPanel
 from textual_widgets.ai_input import AIInput
+from textual_widgets.task_detail_modal import TaskDetailModal
 from config import DEFAULT_TASKS_FILE, DEFAULT_AI_CONVERSATION_FILE
 from debug_logger import debug_log
 
@@ -106,12 +107,12 @@ class TodoTextualApp(App):
 
     /* Status Bar */
     StatusBar {
-        height: 4;
-        min-height: 4;
+        height: 5;
+        min-height: 5;
         border: solid cyan;
         background: $panel;
-        padding: 1 2;
-        content-align: left middle;
+        padding: 0 2;
+        content-align: left top;
     }
 
     /* Buttons */
@@ -208,7 +209,7 @@ class TodoTextualApp(App):
     }
 
     #bottom_section {
-        height: auto;
+        height: 16;
         layout: vertical;
     }
 
@@ -365,35 +366,89 @@ class TodoTextualApp(App):
         # Populate table
         self.refresh_table()
 
-        # Populate AI chat panel
-        ai_panel = self.query_one(AIChatPanel)
-        ai_panel.update_from_state()
+        # Populate AI chat panel with error handling
+        try:
+            ai_panel = self.query_one(AIChatPanel)
+            ai_panel.update_from_state()
+        except Exception as e:
+            self.log.error(f"Failed to initialize AI panel: {e}", exc_info=True)
+            debug_log.error(f"AI panel initialization failed: {e}", exception=e)
+            ai_panel = None
 
         # Update reactive attributes
         self.tasks_count = len(self.state.tasks)
         self.page_number = self.state.page
 
+        # Cache widget references with error boundaries
+        try:
+            self._task_table = self.query_one(TaskTable)
+            self._status_bar = self.query_one(StatusBar)
+            self._command_input = self.query_one(CommandInput)
+            self._ai_panel = ai_panel  # May be None if initialization failed
+            self._ai_input = self.query_one(AIInput)
+
+            debug_log.debug("Widget references cached successfully")
+
+        except Exception as e:
+            # Critical error - widgets not found during mount
+            self.log.error(f"CRITICAL: Failed to cache widget references: {e}", exc_info=True)
+            debug_log.error(f"Widget caching failed: {e}", exception=e)
+
+            # Set fallback values to prevent AttributeError later
+            if not hasattr(self, '_task_table'):
+                self._task_table = None
+            if not hasattr(self, '_status_bar'):
+                self._status_bar = None
+            if not hasattr(self, '_command_input'):
+                self._command_input = None
+            if not hasattr(self, '_ai_panel'):
+                self._ai_panel = None
+            if not hasattr(self, '_ai_input'):
+                self._ai_input = None
+
+            # Notify user of critical error
+            self.notify(
+                "Critical error initializing widgets. Some features may not work.",
+                severity="error",
+                timeout=10
+            )
+
         # Show command input by default (toggle with Ctrl+K)
-        self.query_one(CommandInput).display = True
-        self.command_mode = True
+        if self._command_input:
+            self._command_input.display = True
+            self.command_mode = True
 
         # Show AI panel initially
-        ai_panel.display = self.ai_panel_visible
+        if self._ai_panel:
+            self._ai_panel.display = self.ai_panel_visible
 
         # Set initial focus to table
-        self.query_one(TaskTable).focus()
+        if self._task_table:
+            self._task_table.focus()
 
     def refresh_table(self) -> None:
         """
         Refresh task table with current state
         Called whenever tasks/filters/sort changes
-        """
-        table = self.query_one(TaskTable)
-        table.update_from_state(self.state)
 
-        # Update status bar
-        status_bar = self.query_one(StatusBar)
-        status_bar.update_from_state(self.state)
+        Includes error boundaries to handle widget reference failures gracefully.
+        """
+        # Use cached widget references with null checks (safety)
+        try:
+            if self._task_table:
+                self._task_table.update_from_state(self.state)
+            else:
+                self.log.warning("Task table reference is None, skipping update")
+
+            if self._status_bar:
+                self._status_bar.update_from_state(self.state)
+            else:
+                self.log.warning("Status bar reference is None, skipping update")
+
+        except Exception as e:
+            # Widget update failed - log but don't crash
+            self.log.error(f"Failed to refresh widgets: {e}", exc_info=True)
+            debug_log.error(f"Widget refresh failed: {e}", exception=e)
 
     # ========================================================================
     # MESSAGE HANDLERS
@@ -448,8 +503,7 @@ class TodoTextualApp(App):
             if len(parts) >= 2:
                 try:
                     task_id = int(parts[1])
-                    table = self.query_one(TaskTable)
-                    if table.select_task_by_id(task_id):
+                    if self._task_table.select_task_by_id(task_id):
                         self.action_edit_task()
                     else:
                         self.notify(f"Task #{task_id} not found", severity="error")
@@ -458,6 +512,24 @@ class TodoTextualApp(App):
             else:
                 # No task ID provided, use current selection
                 self.action_edit_task()
+            return
+
+        if cmd in ("show", "s"):
+            # Parse task ID: "show 5"
+            if len(parts) >= 2:
+                try:
+                    task_id = int(parts[1])
+                    self.action_show_task(task_id)
+                except ValueError:
+                    # Not a number - could be a filter expression, let handle_command handle it
+                    pass
+            else:
+                # No task ID provided, use current selection
+                task_id = self._task_table.get_selected_task_id()
+                if task_id is not None:
+                    self.action_show_task(task_id)
+                else:
+                    self.notify("No task selected - use 'show <id>' or select a task", severity="warning")
             return
 
         # Use existing command handler from core/commands.py
@@ -510,18 +582,16 @@ class TodoTextualApp(App):
 
     def action_toggle_command_mode(self) -> None:
         """Toggle command input visibility (Ctrl+K)"""
-        cmd_input = self.query_one(CommandInput)
-
-        if cmd_input.display:
+        if self._command_input.display:
             # Hide command mode
-            cmd_input.display = False
+            self._command_input.display = False
             self.command_mode = False
-            self.query_one(TaskTable).focus()
+            self._task_table.focus()
         else:
             # Show command mode
-            cmd_input.display = True
+            self._command_input.display = True
             self.command_mode = True
-            cmd_input.focus()
+            self._command_input.focus()
 
     @work(exclusive=True)
     async def action_add_task(self) -> None:
@@ -549,8 +619,7 @@ class TodoTextualApp(App):
     @work(exclusive=True)
     async def action_edit_task(self) -> None:
         """Show edit task modal form (runs as worker to support modal dialog)"""
-        table = self.query_one(TaskTable)
-        task_id = table.get_selected_task_id()
+        task_id = self._task_table.get_selected_task_id()
 
         if task_id is None:
             self.notify("No task selected", severity="warning")
@@ -590,10 +659,56 @@ class TodoTextualApp(App):
             self.refresh_table()
             self.notify(f"✓ Task #{task_id} updated", severity="information")
 
+    @work(exclusive=True)
+    async def action_show_task(self, task_id: int) -> None:
+        """
+        Show task details modal with edit option
+
+        Args:
+            task_id: ID of task to display
+        """
+        task = self.state.get_task_by_id(task_id)
+        if not task:
+            self.notify(f"Task #{task_id} not found", severity="error")
+            return
+
+        # Show task detail modal
+        action = await self.push_screen_wait(TaskDetailModal(task))
+
+        # If user wants to edit, open the edit form
+        if action == "edit":
+            # Get existing tags for suggestions
+            existing_tags = list(self.state._tag_index.keys()) if self.state._tag_index else []
+
+            # Show form modal with pre-filled data
+            result = await self.push_screen_wait(TaskForm(task=task, existing_tags=existing_tags))
+
+            if result:
+                # Store old tags for index update
+                old_tags = task.tags.copy()
+
+                # Update task
+                task.name = result["name"]
+                task.comment = result.get("comment", "")
+                task.description = result.get("description", "")
+                task.priority = result.get("priority", 2)
+                task.tag = result.get("tag", "")
+                task.tags = result.get("tags", [])
+
+                # Update indices
+                if self.state._task_index is not None:
+                    self.state._task_index[task.id] = task
+
+                if task.tags != old_tags:
+                    self.state._update_tag_index_for_task(task, old_tags)
+
+                # Refresh UI
+                self.refresh_table()
+                self.notify(f"✓ Task #{task_id} updated", severity="information")
+
     def action_mark_done(self) -> None:
         """Mark selected task as done"""
-        table = self.query_one(TaskTable)
-        task_id = table.get_selected_task_id()
+        task_id = self._task_table.get_selected_task_id()
 
         if task_id is not None:
             task = self.state.get_task_by_id(task_id)
@@ -606,8 +721,7 @@ class TodoTextualApp(App):
 
     def action_mark_undone(self) -> None:
         """Mark selected task as undone"""
-        table = self.query_one(TaskTable)
-        task_id = table.get_selected_task_id()
+        task_id = self._task_table.get_selected_task_id()
 
         if task_id is not None:
             task = self.state.get_task_by_id(task_id)
@@ -621,8 +735,7 @@ class TodoTextualApp(App):
     @work(exclusive=True)
     async def action_delete_task(self) -> None:
         """Delete selected task with confirmation (runs as worker to support modal dialog)"""
-        table = self.query_one(TaskTable)
-        task_id = table.get_selected_task_id()
+        task_id = self._task_table.get_selected_task_id()
 
         if task_id is None:
             self.notify("No task selected", severity="warning")
@@ -723,12 +836,13 @@ Ctrl+Shift+C - Clear AI q - Quit
 
     def action_toggle_ai_panel(self) -> None:
         """Toggle AI chat panel visibility (Ctrl+A)"""
-        ai_panel = self.query_one(AIChatPanel)
-        ai_input = self.query_one(AIInput)
+        if not self._ai_panel or not self._ai_input:
+            self.notify("AI panel not available", severity="warning")
+            return
 
         self.ai_panel_visible = not self.ai_panel_visible
-        ai_panel.display = self.ai_panel_visible
-        ai_input.display = self.ai_panel_visible
+        self._ai_panel.display = self.ai_panel_visible
+        self._ai_input.display = self.ai_panel_visible
 
         if self.ai_panel_visible:
             self.notify("AI panel shown")
@@ -742,16 +856,18 @@ Ctrl+Shift+C - Clear AI q - Quit
             self.action_toggle_ai_panel()
 
         # Focus AI input
-        ai_input = self.query_one(AIInput)
-        ai_input.focus_and_clear()
+        self._ai_input.focus_and_clear()
 
     def action_clear_ai(self) -> None:
         """Clear AI conversation history (Ctrl+Shift+C)"""
+        if not self._ai_panel:
+            self.notify("AI panel not available", severity="warning")
+            return
+
         self.state.clear_conversation()
 
         # Update UI
-        ai_panel = self.query_one(AIChatPanel)
-        ai_panel.clear_conversation()
+        self._ai_panel.clear_conversation()
 
         # Save empty conversation
         self.state.save_conversation_to_file(str(DEFAULT_AI_CONVERSATION_FILE), self.console)
@@ -770,13 +886,16 @@ Ctrl+Shift+C - Clear AI q - Quit
         # Add to conversation as system message
         message = self.state.add_ai_message("assistant", f"📊 Task Insights:\n\n{insights}")
 
-        # Update AI panel
-        ai_panel = self.query_one(AIChatPanel)
-        ai_panel.add_message(message)
+        # Update AI panel (with null check)
+        if self._ai_panel:
+            self._ai_panel.add_message(message)
 
-        # Show AI panel if hidden
-        if not self.ai_panel_visible:
-            self.action_toggle_ai_panel()
+            # Show AI panel if hidden
+            if not self.ai_panel_visible:
+                self.action_toggle_ai_panel()
+        else:
+            # Fallback: show in notification if panel unavailable
+            self.notify("Insights generated (AI panel unavailable)", severity="information")
 
         self.notify("Insights generated")
 
@@ -814,19 +933,23 @@ Ctrl+Shift+C - Clear AI q - Quit
             # LOG: Updating AI panel
             debug_log.debug("[STEP 8] Updating AI chat panel with user message...")
 
-            # Update AI panel
-            ai_panel = self.query_one(AIChatPanel)
-            debug_log.debug(f"[STEP 8] AI panel found: {type(ai_panel).__name__}")
+            # Update AI panel (with null check)
+            if not self._ai_panel:
+                debug_log.error("[STEP 8] AI panel reference is None!")
+                self.notify("AI panel not available", severity="error")
+                return
 
-            ai_panel.add_message(user_message)
+            debug_log.debug(f"[STEP 8] AI panel found: {type(self._ai_panel).__name__}")
+
+            self._ai_panel.add_message(user_message)
 
             debug_log.debug("[STEP 9] AI panel updated successfully")
 
             # LOG: Starting worker
             debug_log.debug("[STEP 10] Starting streaming worker thread...")
 
-            # Start streaming worker
-            self.stream_ai_response(prompt)
+            # Start streaming worker (pass ai_panel to avoid DOM query in worker thread)
+            self.stream_ai_response(prompt, self._ai_panel)
 
             debug_log.debug("[STEP 11] Worker started successfully")
 
@@ -839,17 +962,17 @@ Ctrl+Shift+C - Clear AI q - Quit
             self.notify(f"[ERROR] {type(e).__name__}: {str(e)[:50]}", severity="error", timeout=10)
 
     @work(exclusive=True, thread=True)
-    async def stream_ai_response(self, user_prompt: str) -> None:
+    async def stream_ai_response(self, user_prompt: str, ai_panel: AIChatPanel) -> None:
         """
         Stream AI response in background worker (async)
+        MUST use call_from_thread() for ALL UI updates!
 
         Args:
             user_prompt: User's question/prompt
+            ai_panel: AI chat panel widget (passed to avoid DOM query in worker thread)
         """
         # LOG: Worker thread started
         debug_log.debug(f"[STEP 12] Worker thread started for prompt: '{user_prompt[:50]}'")
-
-        ai_panel = self.query_one(AIChatPanel)
 
         try:
             # Show streaming indicator
