@@ -73,4 +73,3 @@ class StatusBar(Static):
 
         # Update widget content
         self.update(status_markup)
-        self.refresh(layout=True)
