@@ -22,6 +22,7 @@ from textual_widgets.confirm_dialog import ConfirmDialog
 from textual_widgets.ai_chat_panel import AIChatPanel
 from textual_widgets.ai_input import AIInput
 from config import DEFAULT_TASKS_FILE, DEFAULT_AI_CONVERSATION_FILE
+from debug_logger import debug_log
 
 
 class TodoTextualApp(App):
@@ -150,12 +151,12 @@ class TodoTextualApp(App):
         height: 3;
         border: solid cyan;
         background: $panel;
-        dock: bottom;
+        /* dock: bottom; removed - let it position naturally to avoid overlap with ai_input */
         margin: 0 0 1 0;
     }
 
     #command_input:focus {
-        border: solid cyan;
+        border: solid yellow;  /* Clear focus indicator - changed from cyan */
         background: $surface;
     }
 
@@ -286,6 +287,9 @@ class TodoTextualApp(App):
         self.state = AppState()
         # Use Textual's built-in self.console (removed external RichConsole)
 
+        # Log app initialization
+        debug_log.info(f"TodoTextualApp initialized - tasks_file: {tasks_file}")
+
     def compose(self) -> ComposeResult:
         """
         Compose the application layout
@@ -321,6 +325,20 @@ class TodoTextualApp(App):
         Called when app is mounted (startup)
         Load tasks and populate table
         """
+        debug_log.debug("App on_mount() called - app is starting up")
+
+        # Debug: Check if handlers exist
+        has_catch_all = hasattr(self, 'on_message')
+        has_ai_handler = hasattr(self, 'on_ai_input_prompt_submitted')
+        debug_log.debug(f"Handler check: on_message={has_catch_all}, on_ai_input_prompt_submitted={has_ai_handler}")
+
+        # Check if AIInput widget is mounted
+        try:
+            ai_input = self.query_one(AIInput)
+            debug_log.debug(f"AIInput widget found: {ai_input}, id={ai_input.id}")
+        except Exception as e:
+            debug_log.error(f"AIInput widget not found: {e}")
+
         # Load tasks from file
         self.state.load_from_file(self.tasks_file, self.console)
 
@@ -376,12 +394,11 @@ class TodoTextualApp(App):
         if not command:
             return
 
-        # Hide command input after submission
-        self.query_one(CommandInput).display = False
-        self.command_mode = False
+        # Keep command input visible after submission (for easier multi-command workflow)
+        # User can still hide it with Ctrl+K if desired
 
-        # Focus back to table
-        self.query_one(TaskTable).focus()
+        # Keep focus on command input for next command
+        # self.query_one(TaskTable).focus()  # Commented out - keep focus on command input
 
         # Handle special commands that need Textual-specific behavior
         if command.lower() in ("exit", "quit", "q"):
@@ -395,7 +412,6 @@ class TodoTextualApp(App):
 
         # Use existing command handler from core/commands.py
         try:
-            # Use Textual's built-in console (Phase 4.2)
             handle_command(command, self.state, self.console)
 
             # Check if state has messages to display
@@ -550,8 +566,9 @@ class TodoTextualApp(App):
         else:
             self.notify("No task selected", severity="warning")
 
+    @work(exclusive=True)
     async def action_delete_task(self) -> None:
-        """Delete selected task with confirmation"""
+        """Delete selected task with confirmation (runs as worker to support modal dialog)"""
         table = self.query_one(TaskTable)
         task_id = table.get_selected_task_id()
 
@@ -711,22 +728,63 @@ Ctrl+Shift+C - Clear AI q - Quit
 
         self.notify("Insights generated")
 
+    # REMOVED on_message() catch-all to test if it was interfering
+
     def on_ai_input_prompt_submitted(self, message: AIInput.PromptSubmitted) -> None:
         """Handle AI prompt submission"""
+        # LOG: Show handler was called
+        debug_log.debug(f"[STEP 3] Handler called with prompt: '{message.prompt[:50]}'")
+
         prompt = message.prompt
 
         if not prompt:
+            debug_log.debug("[STEP 3] Empty prompt in handler, returning")
             return
 
-        # Add user message to conversation
-        user_message = self.state.add_ai_message("user", prompt)
+        try:
+            # LOG: Show panel visibility
+            debug_log.debug(f"[STEP 4] AI panel visible: {self.ai_panel_visible}")
 
-        # Update AI panel
-        ai_panel = self.query_one(AIChatPanel)
-        ai_panel.add_message(user_message)
+            # Show AI panel if hidden
+            if not self.ai_panel_visible:
+                debug_log.debug("[STEP 5] Toggling AI panel (was hidden)")
+                self.action_toggle_ai_panel()
+                debug_log.debug("[STEP 5] AI panel toggled successfully")
 
-        # Start streaming worker
-        self.stream_ai_response(prompt)
+            # LOG: Creating user message
+            debug_log.debug("[STEP 6] Creating user message object...")
+
+            # Add user message to conversation
+            user_message = self.state.add_ai_message("user", prompt)
+
+            debug_log.debug(f"[STEP 7] User message created - ID: {user_message.timestamp}, Role: {user_message.role}")
+
+            # LOG: Updating AI panel
+            debug_log.debug("[STEP 8] Updating AI chat panel with user message...")
+
+            # Update AI panel
+            ai_panel = self.query_one(AIChatPanel)
+            debug_log.debug(f"[STEP 8] AI panel found: {type(ai_panel).__name__}")
+
+            ai_panel.add_message(user_message)
+
+            debug_log.debug("[STEP 9] AI panel updated successfully")
+
+            # LOG: Starting worker
+            debug_log.debug("[STEP 10] Starting streaming worker thread...")
+
+            # Start streaming worker
+            self.stream_ai_response(prompt)
+
+            debug_log.debug("[STEP 11] Worker started successfully")
+
+            # Keep short notification visible to user
+            self.notify("AI processing...", timeout=2)
+
+        except Exception as e:
+            self.log.error(f"AI input error: {e}", exc_info=True)
+            debug_log.error(f"[ERROR] AI input handler failed: {type(e).__name__}: {str(e)}", exception=e)
+            self.notify(f"[ERROR] {type(e).__name__}: {str(e)[:50]}", severity="error", timeout=10)
 
     @work(exclusive=True, thread=True)
     async def stream_ai_response(self, user_prompt: str) -> None:
@@ -736,59 +794,83 @@ Ctrl+Shift+C - Clear AI q - Quit
         Args:
             user_prompt: User's question/prompt
         """
+        # LOG: Worker thread started
+        debug_log.debug(f"[STEP 12] Worker thread started for prompt: '{user_prompt[:50]}'")
+
         ai_panel = self.query_one(AIChatPanel)
 
         try:
             # Show streaming indicator
+            debug_log.debug("[STEP 12] Showing streaming indicator...")
             self.call_from_thread(ai_panel.show_streaming_indicator)
 
             # Initialize assistant
+            debug_log.debug("[STEP 12] Initializing Assistant...")
             assistant = Assistant()
+            debug_log.debug(f"[STEP 12] Assistant initialized: {type(assistant).__name__}")
 
             # Get conversation context (last 20 messages)
+            debug_log.debug("[STEP 12] Getting conversation context...")
             conversation_context = self.state.get_conversation_context(max_messages=20)
+            debug_log.debug(f"[STEP 12] Context messages: {len(conversation_context)}")
 
             # Create assistant message placeholder (on main thread)
+            debug_log.debug("[STEP 12] Creating assistant message placeholder...")
             response_content = ""
 
             def create_message():
                 """Create message on main thread"""
                 msg = self.state.add_ai_message("assistant", "")
                 ai_panel.add_message(msg)
-                return msg
+                debug_log.debug(f"[STEP 12] Assistant message created: {msg.timestamp}")
 
-            ai_message = self.call_from_thread(create_message)
+            self.call_from_thread(create_message)
 
             # Stream response chunks
+            debug_log.debug("[STEP 12] Starting stream from OpenAI API...")
+            chunk_count = 0
+
             for chunk in assistant.stream_with_context(
                 self.state.tasks,
                 user_prompt,
                 conversation_context
             ):
+                chunk_count += 1
                 response_content += chunk
 
+                # Log every 10th chunk
+                if chunk_count % 10 == 0:
+                    debug_log.debug(f"[STEP 12] Received {chunk_count} chunks, {len(response_content)} chars")
+
                 # Update message content on main thread
-                def update_content(content=response_content, text_chunk=chunk):
+                def update_content(text_chunk=chunk):
                     """Update message content safely"""
-                    ai_message.content = content
                     ai_panel.append_to_last_message(text_chunk)
 
                 self.call_from_thread(update_content)
 
+            debug_log.debug(f"[STEP 12] Stream complete: {chunk_count} chunks, {len(response_content)} total chars")
+
             # Hide streaming indicator
             self.call_from_thread(ai_panel.hide_streaming_indicator)
+            debug_log.debug("[STEP 12] Streaming indicator hidden")
 
             # Save conversation to file
+            debug_log.debug("[STEP 12] Saving conversation to file...")
             self.call_from_thread(
                 self.state.save_conversation_to_file,
                 str(DEFAULT_AI_CONVERSATION_FILE),
                 self.console
             )
+            debug_log.debug("[STEP 12] Conversation saved")
 
             # Show completion notification
             self.call_from_thread(self.notify, "AI response complete")
+            debug_log.debug("[STEP 12] Worker completed successfully")
 
         except Exception as e:
+            debug_log.error(f"[STEP 12] Worker failed: {type(e).__name__}: {str(e)}", exception=e)
+
             # Hide streaming indicator
             self.call_from_thread(ai_panel.hide_streaming_indicator)
 
@@ -797,7 +879,7 @@ Ctrl+Shift+C - Clear AI q - Quit
             self.call_from_thread(self.notify, error_msg, severity="error")
 
             # Add error to conversation
-            error_message = self.state.add_ai_message("assistant", f"❌ Error: {str(e)}")
+            error_message = self.state.add_ai_message("assistant", f"Error: {str(e)}")
             self.call_from_thread(ai_panel.add_message, error_message)
 
     def action_quit(self) -> None:

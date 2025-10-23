@@ -7,6 +7,7 @@ from textual.app import ComposeResult
 from textual.widgets import Input
 from textual.message import Message
 from typing import List
+from debug_logger import debug_log
 
 
 class AIInput(Input):
@@ -23,9 +24,11 @@ class AIInput(Input):
     class PromptSubmitted(Message):
         """Message sent when user submits an AI prompt"""
 
+        bubble = True  # Allow message to bubble up to parent widgets (App)
+
         def __init__(self, prompt: str):
+            super().__init__()  # MUST be called first (Textual requirement)
             self.prompt = prompt
-            super().__init__()
 
     def __init__(self, **kwargs):
         super().__init__(
@@ -36,15 +39,23 @@ class AIInput(Input):
         self.history_index: int = -1  # Current position in history
         self.current_input: str = ""  # Temp storage for current input
 
+        # Log initialization
+        debug_log.debug(f"AIInput widget initialized with id: {kwargs.get('id', 'NO_ID')}")
+
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handle Enter key - submit prompt"""
         prompt = event.value.strip()
 
+        # LOG: Show what was entered
+        debug_log.debug(f"[STEP 1] AI Input received: '{prompt[:50]}' (length: {len(prompt)})")
+
         if not prompt:
+            debug_log.debug("[STEP 1] Empty prompt, returning")
             return
 
         # Validate input length (prevent API errors)
         if len(prompt) > 5000:
+            debug_log.debug(f"[STEP 1] Prompt too long: {len(prompt)} chars")
             # Notify user of validation error
             try:
                 self.app.notify(
@@ -58,18 +69,55 @@ class AIInput(Input):
             return
 
         # Sanitize control characters (security)
+        original_len = len(prompt)
         prompt = ''.join(char for char in prompt if char.isprintable() or char.isspace())
+
+        if len(prompt) != original_len:
+            debug_log.debug(f"[STEP 1] Sanitized prompt: {original_len} -> {len(prompt)} chars")
 
         # Validate again after sanitization (in case all chars were control chars)
         if not prompt.strip():
+            debug_log.debug("[STEP 1] Prompt empty after sanitization")
             return
 
         # Add to history
         self.history.append(prompt)
         self.history_index = -1
 
+        # LOG: Show message is being posted
+        debug_log.debug(f"[STEP 2] Posting PromptSubmitted message to app")
+        debug_log.debug(f"[STEP 2] Widget app reference: {self.app}")
+        debug_log.debug(f"[STEP 2] Widget parent: {self.parent}")
+        debug_log.debug(f"[STEP 2] Widget ID: {self.id}")
+
         # Send message to app
-        self.post_message(self.PromptSubmitted(prompt))
+        try:
+            debug_log.debug(f"[STEP 2] About to create PromptSubmitted message object...")
+            message_obj = self.PromptSubmitted(prompt)
+            debug_log.debug(f"[STEP 2] Message object created successfully")
+
+            message_type = type(message_obj).__name__
+            message_bubble = getattr(message_obj.__class__, 'bubble', 'NOT_SET')
+            debug_log.debug(f"[STEP 2] Message type={message_type}, bubble={message_bubble}")
+
+            debug_log.debug(f"[STEP 2] About to call post_message()...")
+            result = self.post_message(message_obj)
+            debug_log.debug(f"[STEP 2] post_message() returned: {result}")
+
+            debug_log.debug(f"[STEP 2] Message posted successfully to message pump")
+
+            # WORKAROUND: Manually call the handler since message routing is broken
+            debug_log.debug(f"[STEP 2] WORKAROUND: Manually calling app handler...")
+            if hasattr(self.app, 'on_ai_input_prompt_submitted'):
+                self.app.on_ai_input_prompt_submitted(message_obj)
+                debug_log.debug(f"[STEP 2] Manual handler call completed")
+            else:
+                debug_log.error(f"[STEP 2] Handler not found on app!")
+
+        except Exception as e:
+            debug_log.error(f"[STEP 2] EXCEPTION while posting message: {type(e).__name__}: {str(e)}", exception=e)
+            # Re-raise to see the error in the UI
+            raise
 
         # Clear input
         self.value = ""

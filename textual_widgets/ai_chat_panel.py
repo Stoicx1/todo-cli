@@ -22,8 +22,9 @@ class MessageBubble(Static):
 
     def update_content(self):
         """Render message content"""
-        role_icon = "🧑" if self.message.role == "user" else "🤖"
-        role_label = "You" if self.message.role == "user" else "AI"
+        # Use simple text instead of emojis for Windows compatibility
+        role_icon = "[USER]" if self.message.role == "user" else "[AI]"
+        role_label = "You" if self.message.role == "user" else "Assistant"
 
         # Format timestamp (time only)
         from datetime import datetime
@@ -66,7 +67,7 @@ class AIChatPanel(VerticalScroll):
     def __init__(self, state: AppState, **kwargs):
         super().__init__(**kwargs)
         self.state = state
-        self.border_title = "💬 AI Chat"
+        self.border_title = "AI Chat"  # Removed emoji for Windows compatibility
 
     def compose(self) -> ComposeResult:
         """Compose initial layout"""
@@ -79,7 +80,7 @@ class AIChatPanel(VerticalScroll):
 
         if not self.state.ai_conversation:
             # Show empty state
-            empty_label = Label("No conversation yet.\nPress ? or Ctrl+Shift+A to ask AI!")
+            empty_label = Label("No conversation yet.\nPress ? or Ctrl+Shift+A to ask AI!", id="empty_message")
             empty_label.add_class("empty-state")
             self.mount(empty_label)
             self.message_count = 0
@@ -135,8 +136,8 @@ class AIChatPanel(VerticalScroll):
         last_message = self.state.ai_conversation[-1]
         last_message.content += text_chunk
 
-        # Find last bubble and update it
-        bubbles = self.query(MessageBubble)
+        # Find last bubble and update it (Textual 1.x safe)
+        bubbles = list(self.query(MessageBubble))
         if bubbles:
             last_bubble = bubbles[-1]
             last_bubble.update_content()

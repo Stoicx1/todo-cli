@@ -148,6 +148,8 @@ TodoTextualApp (App)
 6. **State mutation** → `AppState` object
 7. **UI refresh** → `refresh_table()` → widget updates → virtual DOM diff → screen render
 
+**Debug Logging:** All event steps logged to `debug_ai_flow.log` for diagnostics (see Debug Logging System section)
+
 **Critical Pattern - Event Bubbling Prevention (Oct 2025):**
 All input widgets MUST prevent event bubbling to avoid duplicate execution:
 ```python
@@ -280,6 +282,30 @@ def watch_task_count(self, old_value: int, new_value: int):
     """Called automatically when task_count changes"""
     self.update_display()
 ```
+
+#### Known Issues - AIInput Message Routing (Oct 2025)
+
+**Bug:** `AIInput.PromptSubmitted` messages not delivered to app handler despite correct configuration.
+
+**Symptoms:**
+- Message class defined with `bubble = True`
+- `post_message()` returns True (indicating success)
+- Handler method exists on App class: `on_ai_input_prompt_submitted()`
+- Message never reaches handler (no invocation)
+
+**Workaround (textual_widgets/ai_input.py):**
+```python
+# Post message (Textual framework - currently not routing)
+self.post_message(message_obj)
+
+# WORKAROUND: Manual handler invocation
+if hasattr(self.app, 'on_ai_input_prompt_submitted'):
+    self.app.on_ai_input_prompt_submitted(message_obj)
+```
+
+**Status:** Workaround functional. Root cause investigation ongoing. May be upstream Textual framework issue.
+
+**Debug Logging:** Full event flow logged to `debug_ai_flow.log` (12 steps from input → handler → worker → completion)
 
 ### Command System
 
@@ -462,6 +488,35 @@ The application implements comprehensive file safety mechanisms to prevent data 
 - ✅ Backward compatible (no migration needed)
 
 **See:** `FILE_SAFETY_COMPLETE.md` for detailed implementation documentation
+
+### Debug Logging System (NEW - 2025-10-23)
+
+Comprehensive debug logging infrastructure for troubleshooting and issue reporting:
+
+**Features:**
+- Timestamped log entries with severity levels (DEBUG, INFO, ERROR)
+- Automatic log rotation on app start (clears previous session)
+- Exception logging with full stack traces
+- AI flow tracing (12-step event tracking from input → worker → completion)
+- Thread-safe logging from worker threads
+
+**Implementation:** `debug_logger.py`
+- `DebugLogger` class with singleton pattern
+- Writes to `debug_ai_flow.log` in project root
+- Global `debug_log` instance used throughout codebase
+
+**Usage:**
+```python
+from debug_logger import debug_log
+
+debug_log.info("App initialized")
+debug_log.debug(f"Processing: {data}")
+debug_log.error("Failed to save", exception=e)
+```
+
+**Log Location:** `debug_ai_flow.log` (cleared on each app start)
+
+**User Benefit:** When reporting bugs, users can attach `debug_ai_flow.log` for detailed diagnostics
 
 ### UI Rendering
 
