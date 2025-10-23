@@ -80,6 +80,10 @@ class TodoTextualApp(App):
         background: $surface;
     }
 
+    DataTable:focus {
+        border: solid yellow;  /* Clear focus indicator */
+    }
+
     DataTable > .datatable--header {
         background: $primary;
         color: $text;
@@ -144,7 +148,7 @@ class TodoTextualApp(App):
     }
 
     Input:focus {
-        border: solid cyan;
+        border: solid yellow;  /* Clear focus indicator */
         background: $panel;
     }
 
@@ -221,6 +225,10 @@ class TodoTextualApp(App):
         padding: 1;
     }
 
+    #ai_chat_panel:focus {
+        border: solid yellow;  /* Clear focus indicator */
+    }
+
     #ai_chat_panel .empty-state {
         color: $text-muted;
         text-align: center;
@@ -254,7 +262,7 @@ class TodoTextualApp(App):
     }
 
     #ai_input:focus {
-        border: solid cyan;
+        border: solid yellow;  /* Clear focus indicator */
         background: $surface;
     }
     """
@@ -293,9 +301,28 @@ class TodoTextualApp(App):
         Args:
             tasks_file: Path to tasks JSON file
         """
+        debug_log.info("=" * 80)
+        debug_log.info("TodoTextualApp.__init__() - Starting initialization")
+        debug_log.info("=" * 80)
+
+        debug_log.info("Calling super().__init__()...")
         super().__init__()
+        debug_log.info("super().__init__() completed")
+
         self.tasks_file = tasks_file
+        debug_log.info(f"tasks_file set to: {tasks_file}")
+
+        debug_log.info("Creating AppState instance...")
         self.state = AppState()
+        debug_log.info("AppState created successfully")
+
+        # Initialize widget references to None (defensive - set in on_mount)
+        self._task_table = None
+        self._status_bar = None
+        self._command_input = None
+        self._ai_panel = None
+        self._ai_input = None
+
         # Use Textual's built-in self.console (removed external RichConsole)
 
         # Log app initialization
@@ -317,32 +344,59 @@ class TodoTextualApp(App):
             - AIInput (AI prompt input, always visible when AI panel shown)
         - Footer (keyboard shortcuts)
         """
+        debug_log.info("=" * 80)
+        debug_log.info("compose() - Building UI layout")
+        debug_log.info("=" * 80)
+
+        debug_log.info("Creating Header widget...")
         yield Header(show_clock=True)
+        debug_log.info("Header created")
 
         # Main vertical layout containing all content
+        debug_log.info("Creating main layout containers...")
         with Vertical(id="app_layout"):
             # Content area with horizontal split (takes remaining space)
             with Horizontal(id="main_container"):
                 # Left side: Task table (70%)
                 with Vertical(id="task_container"):
+                    debug_log.info("Creating TaskTable widget...")
                     yield TaskTable(id="task_table")
+                    debug_log.info("TaskTable created")
 
                 # Right side: AI chat panel (30%, collapsible)
+                debug_log.info("Creating AIChatPanel widget...")
                 yield AIChatPanel(self.state, id="ai_chat_panel")
+                debug_log.info("AIChatPanel created")
 
             # Bottom section with fixed heights (StatusBar + inputs)
             with Vertical(id="bottom_section"):
+                debug_log.info("Creating StatusBar widget...")
                 yield StatusBar(id="status_bar")
-                yield CommandInput(id="command_input")
-                yield AIInput(id="ai_input")
+                debug_log.info("StatusBar created")
 
+                debug_log.info("Creating CommandInput widget...")
+                yield CommandInput(id="command_input")
+                debug_log.info("CommandInput created")
+
+                debug_log.info("Creating AIInput widget...")
+                yield AIInput(id="ai_input")
+                debug_log.info("AIInput created")
+
+        debug_log.info("Creating Footer widget...")
         yield Footer()
+        debug_log.info("Footer created")
+
+        debug_log.info("compose() completed - All widgets created")
 
     def on_mount(self) -> None:
         """
         Called when app is mounted (startup)
         Load tasks and populate table
         """
+        debug_log.info("=" * 80)
+        debug_log.info("on_mount() - Application mounting")
+        debug_log.info("=" * 80)
+
         debug_log.debug("App on_mount() called - app is starting up")
 
         # Debug: Check if handlers exist
@@ -358,34 +412,36 @@ class TodoTextualApp(App):
             debug_log.error(f"AIInput widget not found: {e}")
 
         # Load tasks from file
-        self.state.load_from_file(self.tasks_file, self.console)
+        debug_log.info(f"Loading tasks from file: {self.tasks_file}")
+        try:
+            self.state.load_from_file(self.tasks_file, self.console)
+            debug_log.info(f"Tasks loaded successfully - {len(self.state.tasks)} tasks")
+        except Exception as e:
+            debug_log.error(f"Failed to load tasks: {e}", exception=e)
 
         # Load AI conversation history
-        self.state.load_conversation_from_file(str(DEFAULT_AI_CONVERSATION_FILE), self.console)
-
-        # Populate table
-        self.refresh_table()
-
-        # Populate AI chat panel with error handling
+        debug_log.info(f"Loading AI conversation from: {DEFAULT_AI_CONVERSATION_FILE}")
         try:
-            ai_panel = self.query_one(AIChatPanel)
-            ai_panel.update_from_state()
+            self.state.load_conversation_from_file(str(DEFAULT_AI_CONVERSATION_FILE), self.console)
+            debug_log.info(f"AI conversation loaded - {len(self.state.ai_conversation)} messages")
         except Exception as e:
-            self.log.error(f"Failed to initialize AI panel: {e}", exc_info=True)
-            debug_log.error(f"AI panel initialization failed: {e}", exception=e)
-            ai_panel = None
+            debug_log.error(f"Failed to load AI conversation: {e}", exception=e)
 
-        # Update reactive attributes
-        self.tasks_count = len(self.state.tasks)
-        self.page_number = self.state.page
-
-        # Cache widget references with error boundaries
+        # Cache widget references BEFORE calling refresh_table()
+        # This ensures refresh_table() has access to _task_table and _status_bar
+        debug_log.info("Caching widget references...")
         try:
             self._task_table = self.query_one(TaskTable)
             self._status_bar = self.query_one(StatusBar)
             self._command_input = self.query_one(CommandInput)
-            self._ai_panel = ai_panel  # May be None if initialization failed
             self._ai_input = self.query_one(AIInput)
+
+            # Cache AI panel reference (may fail if widget not mounted)
+            try:
+                self._ai_panel = self.query_one(AIChatPanel)
+            except Exception:
+                self._ai_panel = None
+                debug_log.warning("AI panel not found during widget caching")
 
             debug_log.debug("Widget references cached successfully")
 
@@ -394,24 +450,33 @@ class TodoTextualApp(App):
             self.log.error(f"CRITICAL: Failed to cache widget references: {e}", exc_info=True)
             debug_log.error(f"Widget caching failed: {e}", exception=e)
 
-            # Set fallback values to prevent AttributeError later
-            if not hasattr(self, '_task_table'):
-                self._task_table = None
-            if not hasattr(self, '_status_bar'):
-                self._status_bar = None
-            if not hasattr(self, '_command_input'):
-                self._command_input = None
-            if not hasattr(self, '_ai_panel'):
-                self._ai_panel = None
-            if not hasattr(self, '_ai_input'):
-                self._ai_input = None
-
             # Notify user of critical error
             self.notify(
                 "Critical error initializing widgets. Some features may not work.",
                 severity="error",
                 timeout=10
             )
+
+        # Update reactive attributes
+        self.tasks_count = len(self.state.tasks)
+        self.page_number = self.state.page
+
+        # Populate table (now has cached widget references)
+        debug_log.info("Calling refresh_table() to populate UI...")
+        try:
+            self.refresh_table()
+            debug_log.info("refresh_table() completed successfully")
+        except Exception as e:
+            debug_log.error(f"refresh_table() failed: {e}", exception=e)
+
+        # Populate AI chat panel with error handling
+        if self._ai_panel:
+            try:
+                self._ai_panel.update_from_state()
+                debug_log.info("AI panel initialized successfully")
+            except Exception as e:
+                self.log.error(f"Failed to initialize AI panel: {e}", exc_info=True)
+                debug_log.error(f"AI panel initialization failed: {e}", exception=e)
 
         # Show command input by default (toggle with Ctrl+K)
         if self._command_input:
@@ -423,8 +488,16 @@ class TodoTextualApp(App):
             self._ai_panel.display = self.ai_panel_visible
 
         # Set initial focus to table
+        debug_log.info("Setting initial focus to task table...")
         if self._task_table:
             self._task_table.focus()
+            debug_log.info("Initial focus set to task table")
+        else:
+            debug_log.error("Cannot set focus - task table reference is None")
+
+        debug_log.info("=" * 80)
+        debug_log.info("on_mount() COMPLETED - App should now be visible")
+        debug_log.info("=" * 80)
 
     def refresh_table(self) -> None:
         """

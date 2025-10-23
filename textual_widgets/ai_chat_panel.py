@@ -60,6 +60,9 @@ class AIChatPanel(VerticalScroll):
     - Collapsible sidebar
     """
 
+    # Make panel focusable (for keyboard navigation and focus indicator)
+    can_focus = True
+
     # Reactive attributes
     message_count = reactive(0)
     is_streaming = reactive(False)

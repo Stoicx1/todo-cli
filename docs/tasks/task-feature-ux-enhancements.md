@@ -509,6 +509,68 @@ This feature is complete when:
 - Document all new keyboard shortcuts in help command
 - Update CLAUDE.md with new architecture details
 
+## Recent Fixes (2025-10-23)
+
+### Startup Initialization Bug Fix ✅
+**Issue:** App failed to display tasks on startup, showing empty table and "loading..." status
+
+**Root Cause:** Initialization order bug in `textual_app.py:on_mount()`:
+- Called `refresh_table()` BEFORE caching widget references
+- `refresh_table()` tried to access `self._task_table` which didn't exist yet
+- AttributeError was caught and logged, but table never populated
+
+**Fix:**
+- Reordered `on_mount()` sequence to cache widget references FIRST
+- Added defensive None initialization in `__init__()` for all widget references
+- Added comprehensive debug logging to track initialization flow
+
+**Files Modified:**
+- `textual_app.py` (lines 311-316, 423-471): Initialization order fix
+- `main.py` (lines 23-70): Added debug logging infrastructure
+
+**Result:** ✅ App now correctly displays 29 tasks on startup
+
+---
+
+### Consistent Focus Indicators ✅
+**Issue:** Only CommandInput showed yellow border when focused; other widgets (DataTable, AIInput, AIChatPanel) remained cyan, making it hard to know where focus was
+
+**Root Cause:** Missing CSS `:focus` rules for most widgets
+
+**Fix:** Added yellow focus borders to ALL interactive widgets:
+- `DataTable:focus` - Task table (main list)
+- `Input:focus` - Generic input fields
+- `#ai_input:focus` - AI prompt input
+- `#ai_chat_panel:focus` - AI conversation sidebar
+- Made AIChatPanel explicitly focusable (`can_focus = True`)
+
+**Files Modified:**
+- `textual_app.py` (lines 83-85, 151, 228-230, 261): CSS focus rules
+- `textual_widgets/ai_chat_panel.py` (lines 63-64): Added `can_focus = True`
+
+**Result:** ✅ Consistent yellow borders across ALL widgets - always know where focus is
+
+---
+
+### Input Widget Key Interception Bug Fix ✅
+**Issue:** Users couldn't type letters 'a', 'e', 'f', 'h', 'q', 'v', 'x' in CommandInput or AIInput
+
+**Root Cause:** Added BINDINGS to input widgets that intercepted keypresses before text input could process them
+
+**Fix:** Removed ALL key bindings from input widgets:
+- Removed BINDINGS list from CommandInput
+- Removed BINDINGS list from AIInput
+- Added focus/blur message handlers for future contextual help
+- Command hints remain in placeholder text
+
+**Files Modified:**
+- `textual_widgets/command_input.py` (lines 150-152, 159-167, 236-241): Removed bindings, added messages
+- `textual_widgets/ai_input.py` (lines 24-26): Updated docstring
+
+**Result:** ✅ Free typing works in all input fields
+
+---
+
 ## References
 
 - prompt_toolkit docs: https://python-prompt-toolkit.readthedocs.io/

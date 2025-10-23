@@ -19,6 +19,9 @@ class AIInput(Input):
     - Submit with Enter
     - Cancel with Esc
     - Placeholder text
+
+    Note: No key bindings defined to allow normal input handling.
+    Instructions are shown in the placeholder text.
     """
 
     class PromptSubmitted(Message):

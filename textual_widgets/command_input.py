@@ -145,6 +145,9 @@ class CommandInput(Input):
     - Command history (up/down arrows)
     - Syntax highlighting
     - Submit on Enter
+
+    Note: No key bindings defined to allow free typing.
+    Command hints are shown in the placeholder text.
     """
 
     class CommandSubmitted(Message):
@@ -153,6 +156,14 @@ class CommandInput(Input):
         def __init__(self, command: str) -> None:
             super().__init__()
             self.command = command
+
+    class CommandFocused(Message):
+        """Message sent when command input gains focus"""
+        pass
+
+    class CommandBlurred(Message):
+        """Message sent when command input loses focus"""
+        pass
 
     def __init__(self, **kwargs) -> None:
         """Initialize command input with suggester"""
@@ -223,3 +234,11 @@ class CommandInput(Input):
                     self.value = self.history[self.history_index]
 
                 event.prevent_default()
+
+    def on_focus(self) -> None:
+        """Handle focus event - notify app that command input is active"""
+        self.post_message(self.CommandFocused())
+
+    def on_blur(self) -> None:
+        """Handle blur event - notify app that command input is inactive"""
+        self.post_message(self.CommandBlurred())
