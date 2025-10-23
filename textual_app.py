@@ -107,6 +107,7 @@ class TodoTextualApp(App):
     /* Status Bar */
     StatusBar {
         height: 4;
+        min-height: 4;
         border: solid cyan;
         background: $panel;
         padding: 1 2;
@@ -191,6 +192,11 @@ class TodoTextualApp(App):
     }
 
     /* Main Layout */
+    #app_layout {
+        height: 1fr;
+        layout: vertical;
+    }
+
     #main_container {
         height: 1fr;
         layout: horizontal;
@@ -198,6 +204,11 @@ class TodoTextualApp(App):
 
     #task_container {
         width: 70%;
+        layout: vertical;
+    }
+
+    #bottom_section {
+        height: auto;
         layout: vertical;
     }
 
@@ -238,7 +249,6 @@ class TodoTextualApp(App):
         height: 3;
         border: solid cyan;
         background: $panel;
-        dock: bottom;
         margin: 1 0;
     }
 
@@ -296,28 +306,35 @@ class TodoTextualApp(App):
 
         Layout:
         - Header (title bar)
-        - Horizontal container:
-          - Left (70%): TaskTable (main content)
-          - Right (30%): AI Chat Panel (sidebar, collapsible)
-        - StatusBar (stats and info)
-        - CommandInput (command line, toggled with Ctrl+K)
-        - AIInput (AI prompt input, always visible when AI panel shown)
+        - Main vertical layout:
+          - Main content (horizontal split):
+            - Left (70%): TaskTable (main content)
+            - Right (30%): AI Chat Panel (sidebar, collapsible)
+          - Bottom section (fixed height):
+            - StatusBar (stats and info)
+            - CommandInput (command line, toggled with Ctrl+K)
+            - AIInput (AI prompt input, always visible when AI panel shown)
         - Footer (keyboard shortcuts)
         """
         yield Header(show_clock=True)
 
-        # Main content area with horizontal split
-        with Horizontal(id="main_container"):
-            # Left side: Task table (70%)
-            with Vertical(id="task_container"):
-                yield TaskTable(id="task_table")
+        # Main vertical layout containing all content
+        with Vertical(id="app_layout"):
+            # Content area with horizontal split (takes remaining space)
+            with Horizontal(id="main_container"):
+                # Left side: Task table (70%)
+                with Vertical(id="task_container"):
+                    yield TaskTable(id="task_table")
 
-            # Right side: AI chat panel (30%, collapsible)
-            yield AIChatPanel(self.state, id="ai_chat_panel")
+                # Right side: AI chat panel (30%, collapsible)
+                yield AIChatPanel(self.state, id="ai_chat_panel")
 
-        yield StatusBar(id="status_bar")
-        yield CommandInput(id="command_input")
-        yield AIInput(id="ai_input")
+            # Bottom section with fixed heights (StatusBar + inputs)
+            with Vertical(id="bottom_section"):
+                yield StatusBar(id="status_bar")
+                yield CommandInput(id="command_input")
+                yield AIInput(id="ai_input")
+
         yield Footer()
 
     def on_mount(self) -> None:
@@ -389,6 +406,8 @@ class TodoTextualApp(App):
         Args:
             message: Command submitted message
         """
+        import shlex
+
         command = message.command.strip()
 
         if not command:
@@ -400,14 +419,45 @@ class TodoTextualApp(App):
         # Keep focus on command input for next command
         # self.query_one(TaskTable).focus()  # Commented out - keep focus on command input
 
+        # Parse command to detect form commands
+        try:
+            parts = shlex.split(command)
+            cmd = parts[0].lower() if parts else ""
+        except ValueError:
+            # Shlex parsing failed (unmatched quotes), fall through to handle_command
+            cmd = command.split()[0].lower() if command.split() else ""
+            parts = [cmd]
+
         # Handle special commands that need Textual-specific behavior
-        if command.lower() in ("exit", "quit", "q"):
+        if cmd in ("exit", "quit", "q"):
             self.action_quit()
             return
 
-        if command.lower() in ("cls", "clear", "c"):
+        if cmd in ("cls", "clear", "c"):
             self.refresh_table()
             self.notify("Screen refreshed")
+            return
+
+        # Route form commands to action methods (UX unification)
+        if cmd in ("add", "a"):
+            self.action_add_task()
+            return
+
+        if cmd in ("edit", "e"):
+            # Parse task ID if provided: "edit 5"
+            if len(parts) >= 2:
+                try:
+                    task_id = int(parts[1])
+                    table = self.query_one(TaskTable)
+                    if table.select_task_by_id(task_id):
+                        self.action_edit_task()
+                    else:
+                        self.notify(f"Task #{task_id} not found", severity="error")
+                except ValueError:
+                    self.notify("Invalid task ID - must be a number", severity="error")
+            else:
+                # No task ID provided, use current selection
+                self.action_edit_task()
             return
 
         # Use existing command handler from core/commands.py
@@ -473,8 +523,9 @@ class TodoTextualApp(App):
             self.command_mode = True
             cmd_input.focus()
 
+    @work(exclusive=True)
     async def action_add_task(self) -> None:
-        """Show add task modal form"""
+        """Show add task modal form (runs as worker to support modal dialog)"""
         # Get existing tags for suggestions
         existing_tags = list(self.state._tag_index.keys()) if self.state._tag_index else []
 
@@ -495,8 +546,9 @@ class TodoTextualApp(App):
             self.refresh_table()
             self.notify(f"✓ Task '{result['name'][:30]}...' added", severity="information")
 
+    @work(exclusive=True)
     async def action_edit_task(self) -> None:
-        """Show edit task modal form"""
+        """Show edit task modal form (runs as worker to support modal dialog)"""
         table = self.query_one(TaskTable)
         task_id = table.get_selected_task_id()
 

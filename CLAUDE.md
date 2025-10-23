@@ -122,22 +122,26 @@ A comprehensive debugging session fixed 10 critical issues. See `BUGFIX_COMPREHE
 ```
 TodoTextualApp (App)
 ├── Header (Textual built-in)
-├── Container (main content area)
-│   ├── TaskTable (custom DataTable)
-│   │   └── Row-to-task mapping (fixed Oct 2025)
-│   ├── StatusBar (custom Static)
-│   └── Container (input area)
+├── Vertical (app_layout) - Main layout container (FIXED Oct 2025)
+│   ├── Horizontal (main_container) - Content area
+│   │   ├── Vertical (task_container) - Task list (70% width)
+│   │   │   └── TaskTable (custom DataTable)
+│   │   │       └── Row-to-task mapping (fixed Oct 2025)
+│   │   └── AIChatPanel (sidebar, 30% width, toggleable)
+│   │       ├── Safe DOM queries (fixed Oct 2025)
+│   │       └── MessageBubble widgets (dynamic)
+│   └── Vertical (bottom_section) - Fixed height bottom area (FIXED Oct 2025)
+│       ├── StatusBar (custom Static) - NOW VISIBLE
 │       ├── CommandInput (custom Input)
 │       │   ├── Event bubbling prevention (fixed Oct 2025)
 │       │   └── Command history navigation
 │       └── AIInput (custom Input)
 │           ├── Event bubbling prevention (fixed Oct 2025)
 │           └── Input validation (added Oct 2025)
-├── AIChatPanel (sidebar, toggleable)
-│   ├── Safe DOM queries (fixed Oct 2025)
-│   └── MessageBubble widgets (dynamic)
 └── Footer (Textual built-in)
 ```
+
+**Layout Fix (Oct 2025):** Restructured layout with proper vertical container hierarchy to fix StatusBar invisibility issue. Previously, main_container's `height: 1fr` consumed all available space, leaving no room for StatusBar and inputs. Now uses app_layout → main_container + bottom_section structure.
 
 #### Event Flow
 1. **Keyboard Input** → Textual event system
@@ -192,6 +196,31 @@ async def stream_ai_response(self, prompt: str) -> None:
 - All state mutations → `call_from_thread()`
 - All widget updates → `call_from_thread()`
 - Never mutate shared state directly from worker thread
+
+**Modal Forms MUST use `@work` decorator (Fixed Oct 2025):**
+
+```python
+@work(exclusive=True)
+async def action_add_task(self) -> None:
+    """Show modal form - requires worker context"""
+    # push_screen_wait() blocks until modal dismisses
+    result = await self.push_screen_wait(TaskForm())
+
+    if result:
+        self.state.add_task(**result)
+        self.refresh_table()
+```
+
+**Why `@work` is Required:**
+- `push_screen_wait()` uses async/await and blocks execution
+- Blocking operations require worker thread context (background task)
+- Without @work: `NoActiveWorker` exception
+- `exclusive=True` prevents multiple modals opening simultaneously
+
+**Pattern Applies To:**
+- All actions using `push_screen_wait()` (TaskForm, ConfirmDialog, etc.)
+- Any action that needs to wait for user interaction
+- Background tasks that update UI
 
 #### Performance Optimizations
 
@@ -605,6 +634,110 @@ All command handlers now validate input before processing to prevent IndexError 
   - Dropdown icons: `➕ ✏️` → `>`
   - Status emojis: `📊 ✅ ⏳` → plain text labels
 - Applied to: `main.py`, `ui/command_palette.py`, `ui/renderer.py`
+
+### StatusBar Layout Fix (2025-10-23)
+
+**Problem:** StatusBar widget was invisible despite being rendered and updated correctly.
+
+**Root Cause:** Layout conflict in CSS - `#main_container` had `height: 1fr` which consumed ALL available vertical space, leaving zero height for StatusBar and input widgets below it.
+
+**Solution:** Restructured compose() layout with proper container hierarchy:
+```python
+# NEW STRUCTURE:
+Vertical (app_layout)                    # Takes all space between Header/Footer
+├── Horizontal (main_container)          # Content area (1fr)
+│   ├── TaskTable + AIChatPanel
+└── Vertical (bottom_section)            # Fixed height (auto)
+    ├── StatusBar
+    ├── CommandInput
+    └── AIInput
+```
+
+**Changes Made:**
+1. Added `app_layout` container wrapping all content
+2. Created `bottom_section` container for StatusBar and inputs
+3. Removed `dock: bottom` from AIInput (no longer needed)
+4. Updated CSS with proper height distribution
+
+**Result:** StatusBar now visible with 2-line stats display showing pagination, filter, sort, and task counts.
+
+**Files Modified:** `textual_app.py` (compose() + CSS)
+
+### UX Unification: Command & Keyboard Consistency (2025-10-23)
+
+**Problem:** Inconsistent behavior between command input and keyboard shortcuts for add/edit operations.
+
+**Before:**
+- Keyboard shortcut `a` → Opens modal form ✅
+- Command input `add` → Shows CLI error "Usage: add name comment..." ❌
+- Users confused by two different UX paradigms
+
+**Solution:** Unified command routing - all add/edit commands now open modal forms.
+
+**Changes Made:**
+
+1. **Command Routing in `textual_app.py`:**
+   ```python
+   # New routing logic in on_command_input_command_submitted()
+   if cmd in ('add', 'a'):
+       self.action_add_task()  # Opens form
+       return
+
+   if cmd in ('edit', 'e'):
+       # Smart edit: "edit 5" selects task #5, "edit" uses selection
+       if len(parts) >= 2:
+           task_id = int(parts[1])
+           table.select_task_by_id(task_id)
+       self.action_edit_task()  # Opens form
+       return
+   ```
+
+2. **Added `select_task_by_id()` to TaskTable** (`textual_widgets/task_table.py`):
+   - Allows programmatic row selection by task ID
+   - Enables `edit 5` workflow (select + show form)
+
+3. **Enhanced ConfirmDialog Discoverability** (`textual_widgets/confirm_dialog.py`):
+   - Added keyboard hint text: "Y/N or Tab+Enter | Esc to cancel"
+   - Updated button labels: "Delete (Y)" / "Cancel (N)"
+   - Users now discover existing keyboard shortcuts
+
+4. **Updated Command Descriptions** (`textual_widgets/command_input.py`):
+   - `add` → "Add new task (opens form)"
+   - `edit` → "Edit task (opens form)"
+   - Clear expectation that forms will appear
+
+5. **Updated Help Text** (`core/commands.py`):
+   - Reflects new form-based workflow
+   - Examples show proper usage: `edit [id]` vs `edit <id>`
+
+**Result:**
+- ✅ Consistent UX: `add` command = `a` key = modal form
+- ✅ Consistent UX: `edit 5` command = select row 5 + `e` key = modal form
+- ✅ No more confusing CLI argument errors
+- ✅ Users discover keyboard shortcuts in dialogs
+- ✅ Cleaner, more intuitive workflow
+
+**User Workflows:**
+
+*Add Task:*
+```
+User types: "add"  → Form opens
+User presses: a    → Form opens (same!)
+```
+
+*Edit Task:*
+```
+User types: "edit 5"  → Selects row 5, form opens
+User types: "e"       → Opens form for selected row
+User presses: e       → Opens form for selected row (same!)
+```
+
+**Files Modified:**
+- `textual_app.py` - Command routing + StatusBar CSS
+- `textual_widgets/task_table.py` - Added `select_task_by_id()`
+- `textual_widgets/confirm_dialog.py` - Keyboard hints
+- `textual_widgets/command_input.py` - Updated descriptions
+- `core/commands.py` - Updated help text
 
 ## Recent Enhancements (2025-10-20)
 

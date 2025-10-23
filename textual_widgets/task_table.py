@@ -128,3 +128,20 @@ class TaskTable(DataTable):
         if self.cursor_row >= 0 and self.cursor_row in self._row_to_task_id:
             return self._row_to_task_id[self.cursor_row]
         return None
+
+    def select_task_by_id(self, task_id: int) -> bool:
+        """
+        Select row by task ID
+
+        Args:
+            task_id: Task ID to select
+
+        Returns:
+            True if task found and selected, False otherwise
+        """
+        # Find row index for this task ID
+        for row_idx, tid in self._row_to_task_id.items():
+            if tid == task_id:
+                self.cursor_row = row_idx
+                return True
+        return False

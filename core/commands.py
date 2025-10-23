@@ -708,12 +708,12 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
 Type [bold magenta]/[/bold magenta] to see all commands with descriptions in a dropdown menu!
 
 [bold cyan]📝 Common Commands:[/bold cyan]
-  [yellow]add[/yellow] / [yellow]a[/yellow]          →  Add a new task (opens form)
+  [yellow]add[/yellow] / [yellow]a[/yellow]          →  Add new task (opens interactive form)
+  [yellow]edit[/yellow] / [yellow]e[/yellow] [id]    →  Edit task (opens form, uses selection if no ID)
   [yellow]done[/yellow] / [yellow]x[/yellow] <id>    →  Mark task as complete
   [yellow]undone[/yellow] / [yellow]u[/yellow] <id>  →  Mark task as incomplete
-  [yellow]edit[/yellow] / [yellow]e[/yellow] <id>    →  Edit existing task
   [yellow]show[/yellow] / [yellow]s[/yellow] <id>    →  Show task details OR filter (show done, show priority=1)
-  [yellow]remove[/yellow] <id>     →  Delete a task
+  [yellow]remove[/yellow] <id>     →  Delete a task (with confirmation)
 
 [bold cyan]🔍 Advanced Filtering:[/bold cyan]
   [yellow]f[/yellow] status=done              →  Completed tasks

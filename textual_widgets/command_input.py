@@ -17,16 +17,16 @@ class CommandSuggester(Suggester):
     # Command completions with descriptions
     COMMANDS = {
         # Task Management
-        "add": "Add a new task",
-        "edit": "Edit an existing task",
+        "add": "Add new task (opens form)",
+        "edit": "Edit task (opens form)",
         "done": "Mark task(s) as complete",
         "undone": "Mark task(s) as incomplete",
         "remove": "Delete task(s)",
         "show": "Show task details or filter",
 
         # Shortcuts
-        "a": "Shortcut for add",
-        "e": "Shortcut for edit",
+        "a": "Shortcut: add task (form)",
+        "e": "Shortcut: edit task (form)",
         "x": "Shortcut for done",
         "u": "Shortcut for undone",
         "d": "Shortcut for delete",

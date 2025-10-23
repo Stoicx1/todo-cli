@@ -44,6 +44,13 @@ class ConfirmDialog(ModalScreen[bool]):
         margin: 0 1;
         min-width: 12;
     }
+
+    ConfirmDialog Static.hint {
+        color: $text-muted;
+        text-align: center;
+        padding: 0 0 1 0;
+        text-style: italic;
+    }
     """
 
     def __init__(
@@ -74,9 +81,10 @@ class ConfirmDialog(ModalScreen[bool]):
         with Container():
             yield Static(f"[bold cyan]{self.title}[/bold cyan]")
             yield Static(self.message)
+            yield Static("[dim]Y/N or Tab+Enter | Esc to cancel[/dim]", classes="hint")
             with Horizontal():
-                yield Button(self.confirm_text, variant="error", id="confirm")
-                yield Button(self.cancel_text, variant="primary", id="cancel")
+                yield Button(f"{self.confirm_text} (Y)", variant="error", id="confirm")
+                yield Button(f"{self.cancel_text} (N)", variant="primary", id="cancel")
 
     def on_mount(self) -> None:
         """Focus cancel button by default (safer)"""
