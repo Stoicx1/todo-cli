@@ -1,24 +1,41 @@
 # ⚡ Todo CLI - Quick Reference Guide
 
-**Updated:** 2025-10-20
+**Updated:** 2025-10-23 (October 2025 Update)
 
 ---
 
 ## 🚀 New Features Summary
 
-### **1. Command Shortcuts** (60% faster!)
+### **1. Command Shortcuts** (60% faster!) - Updated Oct 2025
 ```bash
-d <id>     # done <id>
-u <id>     # undone <id>
-r <id>     # remove <id>
+# Task Operations
+a          # add (opens interactive form)
 e <id>     # edit <id>
+x <id>     # done <id> (x OR d both work!)
+d <id>     # done <id> (d OR x both work!)
+u <id>     # undone <id>
+r <id>     # remove <id> (changed from 'd' → 'r' for clarity)
 s <id>     # show <id>
+
+# Navigation
 n          # next page
 p          # prev page
+v          # toggle view (compact/detail)
+
+# Filtering & Info
+f          # filter (use with expressions)
 t          # tags
 h          # help
-x          # exit
+
+# System
+q          # quit/exit (changed from 'x' → 'q')
 ```
+
+**Oct 2025 Changes:**
+- ✅ Both `x` and `d` now mark tasks done
+- ✅ Delete changed from `d` to `r` for clarity
+- ✅ Exit/quit changed from `x` to `q`
+- ✅ Added `a` shortcut for add
 
 ### **2. Bulk Operations**
 ```bash
@@ -50,12 +67,12 @@ save   # Save tasks without exiting
 
 ## 📖 Command Reference
 
-### **Task Management**
+### **Task Management** (Updated Oct 2025)
 | Command | Shortcut | Usage | Example |
 |---------|----------|-------|---------|
-| add | - | `add` | Opens interactive form |
+| add | `a` | `add` | Opens interactive form |
 | edit | `e` | `edit <id>` | `e 5` or `edit 5` |
-| done | `d` | `done <id> [ids...]` | `d 3` or `done 1-5` |
+| done | `x` / `d` | `done <id> [ids...]` | `x 3` or `d 1-5` (both work!) |
 | undone | `u` | `undone <id> [ids...]` | `u 3` or `undone 1 2 3` |
 | remove | `r` | `remove <id> [ids...]` | `r 10` or `remove 1-5,8` |
 | show | `s` | `show <id>` | `s 5` |
@@ -72,7 +89,7 @@ save   # Save tasks without exiting
 | Command | Shortcut | Usage | Example |
 |---------|----------|-------|---------|
 | filter | `f` | `filter <type>` | `filter done` |
-| sort | - | `sort <field>` | `sort priority` |
+| sort | `so` | `sort <field> [asc|desc]` | `sort priority desc` |
 | tags | `t` | List all tags | `t` or `tags` |
 
 **Filter Types:**
@@ -85,6 +102,10 @@ save   # Save tasks without exiting
 - `priority` - Sort by priority (1=high, 3=low)
 - `id` - Sort by task ID
 - `name` - Sort alphabetically
+**Order:**
+- `asc` — ascending (default)
+- `desc` — descending
+- Examples: `sort name desc`, `sort order asc`, `sort` (toggle)
 
 ### **Information & AI**
 | Command | Usage | Description |
@@ -94,25 +115,31 @@ save   # Save tasks without exiting
 | help | `h` or `help` | Show full help |
 | ? | `?` | Ask GPT (requires API key) |
 
-### **System**
+### **System** (Updated Oct 2025)
 | Command | Shortcut | Usage | Description |
 |---------|----------|-------|-------------|
 | save | - | `save` | Save tasks to file |
-| cls | - | `cls`, `clear`, or `c` | Clear and refresh |
-| exit | `x` | `exit`, `quit`, or `x` | Save and exit |
+| cls | `c` | `cls`, `clear`, or `c` | Clear and refresh |
+| exit | `q` | `exit`, `quit`, or `q` | Save and exit |
+
+### **Settings**
+- Preferences saved to `~/.todo_cli_settings.json`
+- Persisted: sort, sort_order, view_mode, filter
 
 ---
 
 ## 💡 Pro Tips
 
-### **Speed Up Your Workflow**
+### **Speed Up Your Workflow** (Oct 2025)
 ```bash
 # Old way (slow)
 ❯ done 5
 ❯ done 6
 ❯ done 7
 
-# New way (fast)
+# New way (fast) - use x or d
+❯ x 5-7
+# OR
 ❯ d 5-7
 ```
 
@@ -198,12 +225,18 @@ Your terminal uses CP1252 encoding. The app automatically falls back to ASCII:
 - `🟡 MED` → `· MED`
 - `🟢 LOW` → `- LOW`
 
-### **Shortcuts not working?**
-Make sure you're typing the letter and the command together:
+### **Shortcuts not working?** (Updated Oct 2025)
+Make sure you're typing the letter and space, then the argument:
 ```bash
-✅ Correct: d 5
-❌ Wrong: d5 (no space)
+✅ Correct: x 5    (mark done)
+✅ Correct: d 5    (mark done - both work!)
+✅ Correct: r 5    (remove)
+✅ Correct: q      (quit)
+❌ Wrong: x5       (no space)
+❌ Wrong: d5       (no space)
 ```
+
+**Note:** Both `x` and `d` mark tasks as done. Use whichever you prefer!
 
 ### **Bulk operations failing?**
 Check your syntax:
@@ -236,15 +269,16 @@ Check your syntax:
 ❯ insights          # Check task overview
 ❯ f undone          # Filter to incomplete
 ❯ sort priority     # Sort by priority
+❯ sort name desc    # Z→A
 # Start working on top tasks
 ```
 
-### **End of Day**
+### **End of Day** (Updated Oct 2025)
 ```bash
-❯ d 10-15          # Mark completed tasks
+❯ x 10-15          # Mark completed tasks (or use 'd')
 ❯ save             # Save progress
 ❯ insights         # Review progress
-❯ x                # Exit
+❯ q                # Exit (updated from 'x')
 ```
 
 ### **Sprint Planning**

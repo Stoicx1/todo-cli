@@ -13,13 +13,8 @@ from prompt_toolkit import prompt
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.shortcuts import yes_no_dialog
 import time
-import sys
-
-# Unicode/emoji support detection for Windows compatibility
-USE_UNICODE = (
-    sys.stdout.encoding and
-    sys.stdout.encoding.lower() in ('utf-8', 'utf8')
-)
+from config import ui
+from utils.emoji import emoji
 
 
 class SuccessPanel:
@@ -31,20 +26,17 @@ class SuccessPanel:
     def __init__(
         self,
         message: str,
-        duration: float = 2.0,
+        duration: float = None,
         console: Optional[Console] = None
     ):
         self.message = message
-        self.duration = duration
+        self.duration = duration if duration is not None else ui.SUCCESS_PANEL_DURATION
         self.console = console or Console()
 
     def show(self):
         """Display the success panel"""
         # Icon selection based on Unicode support
-        if USE_UNICODE:
-            icon = "✓"
-        else:
-            icon = "OK"
+        icon = emoji("✓", "OK")
 
         # Create success text
         success_text = Text()
@@ -93,10 +85,7 @@ class ErrorPanel:
     def show(self):
         """Display the error panel"""
         # Icon selection based on Unicode support
-        if USE_UNICODE:
-            icon = "✗"
-        else:
-            icon = "ERROR"
+        icon = emoji("✗", "ERROR")
 
         # Create error text
         error_text = Text()
@@ -144,10 +133,7 @@ class InfoPanel:
     def show(self):
         """Display the info panel"""
         # Icon selection based on Unicode support
-        if USE_UNICODE:
-            icon = "ℹ"
-        else:
-            icon = "INFO"
+        icon = emoji("ℹ", "INFO")
 
         # Create info text
         info_text = Text()
@@ -292,16 +278,14 @@ class OperationSummary:
         summary_parts = []
 
         if self.success_count > 0:
-            if USE_UNICODE:
-                summary_parts.append(f"✓ {self.success_count} {self.operation}")
-            else:
-                summary_parts.append(f"OK: {self.success_count} {self.operation}")
+            summary_parts.append(
+                emoji(f"✓ {self.success_count} {self.operation}", f"OK: {self.success_count} {self.operation}")
+            )
 
         if self.failure_count > 0:
-            if USE_UNICODE:
-                summary_parts.append(f"✗ {self.failure_count} failed")
-            else:
-                summary_parts.append(f"ERROR: {self.failure_count} failed")
+            summary_parts.append(
+                emoji(f"✗ {self.failure_count} failed", f"ERROR: {self.failure_count} failed")
+            )
 
         summary_text = ", ".join(summary_parts)
 

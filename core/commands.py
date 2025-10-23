@@ -1,28 +1,53 @@
+from typing import Optional
 from rich.console import Console
-from rich.table import Table
 from rich.prompt import Prompt
 from rich.panel import Panel
-from rich.text import Text
 from core.state import AppState
 import shlex
 from textwrap import dedent
 from datetime import datetime
 from assistant import Assistant
 from ui.feedback import (
-    show_success,
-    show_error,
-    show_info,
     confirm,
-    OperationSummary,
-    ProgressSpinner
+    OperationSummary
 )
-import sys
+from utils.tag_parser import parse_tags
+from utils.validators import validate_priority, sanitize_comment, sanitize_description, clamp_priority
+from config import ui, USE_UNICODE, DEBUG_PARSER
+from utils.emoji import emoji
 
-# Unicode/emoji support detection for Windows compatibility
-USE_UNICODE = (
-    sys.stdout.encoding and
-    sys.stdout.encoding.lower() in ('utf-8', 'utf8')
-)
+
+# Command aliases - Single source of truth for all shortcuts
+# Consolidated from COMMAND_ALIASES and SHORTCUTS (Phase 4.1)
+COMMAND_ALIASES = {
+    # Single-letter shortcuts (primary)
+    'a': 'add',
+    'e': 'edit',
+    'x': 'done',       # x = done (not exit, use 'q' for quit)
+    'd': 'done',       # d = done (alternative to 'x')
+    'u': 'undone',
+    'n': 'next',
+    'p': 'prev',
+    's': 'show',
+    'v': 'view',
+    'f': 'filter',
+    't': 'tags',
+    'h': 'help',
+    'q': 'exit',       # q = quit/exit
+
+    # Additional shortcuts
+    'r': 'remove',
+    'so': 'sort',
+
+    # Word aliases
+    'delete': 'remove',
+    'del': 'remove',
+    'quit': 'exit',
+}
+
+# Deprecated - kept for backward compatibility (Phase 4.1)
+# Use COMMAND_ALIASES instead
+SHORTCUTS = COMMAND_ALIASES
 
 
 gpt = Assistant()
@@ -60,27 +85,8 @@ def get_relative_time(iso_timestamp: str) -> str:
     except (ValueError, AttributeError):
         return "Unknown"
 
-# Command shortcuts and aliases
-SHORTCUTS = {
-    # Single-letter shortcuts
-    'd': 'done',
-    'u': 'undone',
-    'r': 'remove',
-    'e': 'edit',
-    's': 'show',
-    'n': 'next',
-    'p': 'prev',
-    'f': 'filter',
-    't': 'tags',
-    'h': 'help',
-    'x': 'exit',
-    # Aliases
-    'delete': 'remove',  # delete is alias for remove
-    'del': 'remove'      # del is also alias for remove
-}
 
-
-def parse_task_ids(id_args: list) -> list:
+def parse_task_ids(id_args: list[str]) -> list[int]:
     """
     Parse task IDs from arguments, supporting:
     - Single IDs: 1 2 3
@@ -109,11 +115,11 @@ def parse_task_ids(id_args: list) -> list:
     return sorted(list(ids))
 
 
-def parse_command(command: str, state: AppState, console: Console):
+def parse_command(command: str, state: AppState, console: Console) -> Optional[tuple[str, list[str]]]:
     parts = shlex.split(command.strip())
     if not parts:
         state.messages = []
-        return
+        return None
     state.messages = []
 
     # Expand shortcuts
@@ -122,11 +128,12 @@ def parse_command(command: str, state: AppState, console: Console):
         parts[0] = SHORTCUTS[cmd]
         cmd = parts[0]
 
-    state.messages.append(f"[debug] Parsed parts: {parts}")
+    if DEBUG_PARSER:
+        state.messages.append(f"[debug] Parsed parts: {parts}")
     return cmd, parts
 
 
-def handle_add(command_arguments: list, state: AppState, console: Console):
+def handle_add(command_arguments: list[str], state: AppState, console: Console) -> None:
     """
     Parses arguments from the 'add' command and adds a new task to the application state.
 
@@ -145,11 +152,11 @@ def handle_add(command_arguments: list, state: AppState, console: Console):
     # Ensure the task name is provided
     if len(command_arguments) < 2:
         state.messages.append(
-            '[!] Usage: add "name" ["comment"] ["description"] [priority] ["tag"]\n    Example: add "Fix bug" "urgent" "Fix the login issue" 1 "work"'
+            '[red]?[/red] Usage: add "name" ["comment"] ["description"] [priority] ["tag"]\n    Example: add "Fix bug" "urgent" "Fix the login issue" 1 "work"'
         )
         return
 
-    # Initialize all variables with defaults (CRITICAL BUG FIX)
+    # Initialize all variables with defaults
     name = command_arguments[1]
     comment = ""
     description = ""
@@ -176,19 +183,29 @@ def handle_add(command_arguments: list, state: AppState, console: Console):
     elif len(command_arguments) >= 5:
         comment = command_arguments[2]
         description = command_arguments[3]
-        try:
-            priority = int(command_arguments[4])  # Validate priority is a number
-        except ValueError:
-            state.messages.append(f'[!] Priority must be a number, got: "{command_arguments[4]}"\n    Example: add "Task" "comment" "description" 1 "tag"')
+
+        # Validate priority using utility
+        is_valid, error, validated_priority = validate_priority(command_arguments[4])
+        if not is_valid:
+            state.messages.append(f'[red]?[/red] {error}\n    Example: add "Task" "comment" "description" 1 "tag"')
             return
+        priority = validated_priority
+
         tag = command_arguments[5] if len(command_arguments) > 5 else ""
 
-    # Add the parsed task to state
+    # Sanitize text inputs (enforces length limits)
+    comment = sanitize_comment(comment)
+    description = sanitize_description(description)
+
+    # Clamp priority to valid range (auto-correct)
+    priority = clamp_priority(priority)
+
+    # Add the parsed task to state (will use parse_tags internally)
     state.add_task(name, comment, description, priority, tag)
-    state.messages.append(f"[+] Added task: {name}")
+    state.messages.append(f"[green]?[/green] Added task: {name}")
 
 
-def handle_done(command_arguments: list, state: AppState, console: Console):
+def handle_done(command_arguments: list[str], state: AppState, console: Console) -> None:
     """
     Marks the specified task(s) as done based on the task ID(s).
     Supports bulk operations: done 1 2 3, done 1-5, done 1,3,5-8
@@ -202,22 +219,22 @@ def handle_done(command_arguments: list, state: AppState, console: Console):
 
     # Check if task ID was provided
     if len(command_arguments) < 2:
-        state.messages.append('[!] Usage: done <id> [id2 id3...]\n    Example: done 3\n    Bulk: done 1 2 3 or done 1-5')
+        state.messages.append('[red]?[/red] Usage: done <id> [id2 id3...]\n    Example: done 3\n    Bulk: done 1 2 3 or done 1-5')
         return
 
     # Parse all task IDs (supports ranges and multiple IDs)
     task_ids = parse_task_ids(command_arguments[1:])
 
     if not task_ids:
-        state.messages.append('[!] No valid task IDs provided\n    Example: done 3 or done 1-5')
+        state.messages.append('[red]?[/red] No valid task IDs provided\n    Example: done 3 or done 1-5')
         return
 
-    # Mark all found tasks as done
+    # Mark all found tasks as done (using O(1) index lookup)
     marked = []
     not_found = []
 
     for task_id in task_ids:
-        task = next((t for t in state.tasks if t.id == task_id), None)
+        task = state.get_task_by_id(task_id)  # O(1) lookup instead of O(n)
         if task:
             task.done = True
             task.completed_at = datetime.now().isoformat()
@@ -233,10 +250,10 @@ def handle_done(command_arguments: list, state: AppState, console: Console):
             state.messages.append(f"[✓] Tasks {', '.join(map(str, marked))} marked as done")
 
     if not_found:
-        state.messages.append(f"[!] Tasks not found: {', '.join(map(str, not_found))}")
+        state.messages.append(f"[red]?[/red] Tasks not found: {', '.join(map(str, not_found))}")
 
 
-def handle_undone(command_arguments: list, state: AppState, console: Console):
+def handle_undone(command_arguments: list[str], state: AppState, console: Console) -> None:
     """
     Unmarks the specified task(s) (sets 'done' to False) based on the task ID(s).
     Supports bulk operations: undone 1 2 3, undone 1-5, undone 1,3,5-8
@@ -248,22 +265,22 @@ def handle_undone(command_arguments: list, state: AppState, console: Console):
     """
     # Check if task ID was provided
     if len(command_arguments) < 2:
-        state.messages.append('[!] Usage: undone <id> [id2 id3...]\n    Example: undone 3\n    Bulk: undone 1 2 3 or undone 1-5')
+        state.messages.append('[red]?[/red] Usage: undone <id> [id2 id3...]\n    Example: undone 3\n    Bulk: undone 1 2 3 or undone 1-5')
         return
 
     # Parse all task IDs (supports ranges and multiple IDs)
     task_ids = parse_task_ids(command_arguments[1:])
 
     if not task_ids:
-        state.messages.append('[!] No valid task IDs provided\n    Example: undone 3 or undone 1-5')
+        state.messages.append('[red]?[/red] No valid task IDs provided\n    Example: undone 3 or undone 1-5')
         return
 
-    # Unmark all found tasks
+    # Unmark all found tasks (using O(1) index lookup)
     unmarked = []
     not_found = []
 
     for task_id in task_ids:
-        task = next((t for t in state.tasks if t.id == task_id), None)
+        task = state.get_task_by_id(task_id)  # O(1) lookup
         if task:
             task.done = False
             task.completed_at = ""  # Clear completion timestamp
@@ -279,14 +296,18 @@ def handle_undone(command_arguments: list, state: AppState, console: Console):
             state.messages.append(f"[✓] Tasks {', '.join(map(str, unmarked))} unmarked")
 
     if not_found:
-        state.messages.append(f"[!] Tasks not found: {', '.join(map(str, not_found))}")
+        state.messages.append(f"[red]?[/red] Tasks not found: {', '.join(map(str, not_found))}")
 
 
-def handle_command(command: str, state: AppState, console: Console):
+def handle_command(command: str, state: AppState, console: Console) -> None:
     try:
         cmd, parts = parse_command(command, state, console)
     except Exception as e:
         return
+
+    # Map command aliases to full commands
+    if cmd in COMMAND_ALIASES:
+        cmd = COMMAND_ALIASES[cmd]
 
     if cmd == "add":
         handle_add(parts, state, console)
@@ -299,30 +320,30 @@ def handle_command(command: str, state: AppState, console: Console):
 
     elif cmd == "remove":
         if len(parts) < 2:
-            state.messages.append('[!] Usage: remove <id> [id2 id3...]\n    Example: remove 3\n    Bulk: remove 1 2 3 or remove 1-5')
+            state.messages.append('[red]?[/red] Usage: remove <id> [id2 id3...]\n    Example: remove 3\n    Bulk: remove 1 2 3 or remove 1-5')
             return
 
         # Parse all task IDs (supports ranges and multiple IDs)
         task_ids = parse_task_ids(parts[1:])
 
         if not task_ids:
-            state.messages.append('[!] No valid task IDs provided\n    Example: remove 3 or remove 1-5')
+            state.messages.append('[red]?[/red] No valid task IDs provided\n    Example: remove 3 or remove 1-5')
             return
 
-        # Confirmation dialog for bulk delete (>3 tasks)
-        if len(task_ids) > 3:
+        # Confirmation dialog for bulk delete (using config threshold)
+        if len(task_ids) > ui.BULK_DELETE_THRESHOLD:
             if not confirm(f"Delete {len(task_ids)} tasks?", default=False):
                 state.messages.append("[yellow]Deletion cancelled[/yellow]")
                 return
 
-        # Remove all found tasks
+        # Remove all found tasks (using O(1) index lookup)
         removed = []
         not_found = []
 
         for task_id in task_ids:
-            task = next((t for t in state.tasks if t.id == task_id), None)
+            task = state.get_task_by_id(task_id)  # O(1) lookup
             if task:
-                state.tasks.remove(task)
+                state.remove_task(task)  # Use new method that updates index
                 removed.append(task_id)
             else:
                 not_found.append(task_id)
@@ -344,52 +365,61 @@ def handle_command(command: str, state: AppState, console: Console):
                 state.messages.append(f"[-] Removed tasks {', '.join(map(str, removed))}")
 
         if not_found:
-            state.messages.append(f"[!] Tasks not found: {', '.join(map(str, not_found))}")
+            state.messages.append(f"[red]?[/red] Tasks not found: {', '.join(map(str, not_found))}")
 
     elif cmd == "edit":
         if len(parts) < 2:
             state.messages.append(
-                '[!] Usage: edit <id> "name" "comment" "description" priority "tag"'
+                '[red]?[/red] Usage: edit <id> "name" "comment" "description" priority "tag"'
             )
             return
 
         try:
             task_id = int(parts[1])
         except ValueError:
-            state.messages.append("[!] Task ID must be a number")
+            state.messages.append("[red]?[/red] Task ID must be a number")
             return
 
-        task = next((t for t in state.tasks if t.id == task_id), None)
+        task = state.get_task_by_id(task_id)  # O(1) lookup
         if not task:
-            state.messages.append(f"[!] Task {task_id} not found")
+            state.messages.append(f"[red]?[/red] Task {task_id} not found")
             return
+
+        # Store old tags for tag index update
+        old_tags = task.tags.copy()
 
         # Safely update each field if provided
         try:
             if len(parts) > 2 and parts[2] != "-":
                 task.name = parts[2]
             if len(parts) > 3 and parts[3] != "-":
-                task.comment = parts[3]
+                task.comment = sanitize_comment(parts[3])
             if len(parts) > 4 and parts[4] != "-":
-                task.description = parts[4]
+                task.description = sanitize_description(parts[4])
             if len(parts) > 5 and parts[5].isdigit():
-                task.priority = int(parts[5])
+                task.priority = clamp_priority(int(parts[5]))
             if len(parts) > 6 and parts[6] != "-":
-                # Parse tags - split by comma if multiple tags provided
-                tag_str = parts[6]
-                if ',' in tag_str:
-                    tag_list = [t.strip().lower() for t in tag_str.split(',') if t.strip()]
-                    tag_list = tag_list[:3]  # Limit to 3 tags
-                else:
-                    tag_list = [tag_str.strip().lower()] if tag_str.strip() else []
+                # Parse tags using centralized utility (DRY)
+                tag_list = parse_tags(
+                    parts[6],
+                    warn_callback=lambda msg: console.print(msg)
+                )
 
                 # Update both legacy and new tag fields
                 task.tag = tag_list[0] if tag_list else ""
                 task.tags = tag_list
 
+            # UPDATE TASK INDEX (defensive - ensures consistency)
+            if state._task_index is not None:
+                state._task_index[task.id] = task
+
+            # UPDATE TAG INDEX (if tags changed)
+            if task.tags != old_tags:
+                state._update_tag_index_for_task(task, old_tags)
+
             state.messages.append(f"[~] Task {task_id} updated")
         except Exception as e:
-            state.messages.append(f"[!] Failed to update task: {e}")
+            state.messages.append(f"[red]?[/red] Failed to update task: {e}")
 
     elif cmd == "next":
         # Ensure next only works if there are more tasks to show
@@ -397,14 +427,14 @@ def handle_command(command: str, state: AppState, console: Console):
             state.page += 1
             state.messages.append("→ Next page")
         else:
-            state.messages.append("[!] No more pages")
+            state.messages.append("[red]?[/red] No more pages")
 
     elif cmd == "prev":
         if state.page > 0:
             state.page -= 1
             state.messages.append("← Previous page")
         else:
-            state.messages.append("[!] Already on the first page")
+            state.messages.append("[red]?[/red] Already on the first page")
 
     elif cmd == "view":
         if len(parts) > 1 and parts[1] in ("compact", "detail"):
@@ -412,42 +442,132 @@ def handle_command(command: str, state: AppState, console: Console):
             state.messages.append(f"[~] Switched to view: {parts[1]}")
 
     elif cmd == "sort":
-        if len(parts) < 2:
-            state.messages.append(f'[!] Usage: sort "id" / "name / "priotiry"')
+        # Supported:
+        #   sort                           → toggle order (quick flip)
+        #   sort <id|name|priority> [asc|desc]
+        #   sort <priority> high|low       → friendly aliases
+        #   sort order <asc|desc>
+        if len(parts) == 1:
+            # Quick toggle with no args
+            state.sort_order = "desc" if state.sort_order == "asc" else "asc"
+            state.messages.append(f"[~] Sort order toggled → {state.sort_order}")
             return
-        if len(parts) > 1 and parts[1] in ("id", "name", "priority"):
-            state.sort = parts[1]
-            state.messages.append(f"[~] Sorted by: {parts[1]}")
+
+        # Explicit toggle subcommand (aligns with completer suggestion)
+        if parts[1] == "toggle":
+            state.sort_order = "desc" if state.sort_order == "asc" else "asc"
+            state.messages.append(f"[~] Sort order toggled → {state.sort_order}")
+            return
+
+        # Case: sort order asc|desc
+        if parts[1] == "order":
+            if len(parts) >= 3 and parts[2].lower() in ("asc", "desc"):
+                state.sort_order = parts[2].lower()
+                state.messages.append(f"[~] Sort order set to: {state.sort_order}")
+            else:
+                state.messages.append('[red]?[/red] Usage: sort order [asc|desc]')
+            return
+
+        # Case: sort <field> [asc|desc]
+        field = parts[1]
+        if field not in ("id", "name", "priority"):
+            state.messages.append('[red]?[/red] Usage: sort "id" / "name" / "priority" [asc|desc]')
+            return
+
+        # Handle friendly aliases for priority order
+        order = None
+        if len(parts) >= 3:
+            p2 = parts[2].lower()
+            if p2 in ("asc", "desc"):
+                order = p2
+            elif field == "priority" and p2 in ("high", "low"):
+                order = "asc" if p2 == "high" else "desc"
+
+        state.sort = field
+        if order:
+            state.sort_order = order
+
+        state.messages.append(f"[~] Sorted by: {state.sort} ({state.sort_order})")
 
     elif cmd == "filter":
         if len(parts) < 2:
             state.messages.append(
-                f'[!] Usage: filter "none" / "done" / "undone" / "tag:tagname"'
+                '[red]?[/red] Usage: filter <expression>\n'
+                '    Examples:\n'
+                '      f status=done              → Completed tasks\n'
+                '      f priority=1               → High priority\n'
+                '      f status=undone tag=psdc   → Incomplete with tag psdc\n'
+                '      f priority>=2 tag!=test    → Medium/low, not tagged test\n'
+                '      f tag=psdc,webasto         → Either tag (OR)\n'
+                '      f tag=psdc+webasto         → Both tags (AND)'
             )
             return
 
-        arg = parts[1]
-        if arg in ("none", "done", "undone") or arg.startswith("tag:"):
-            state.filter = arg
-            state.page = 0  # reset to first page when filter changes
-            state.messages.append(f"[~] Filter set to: {arg}")
-        else:
-            state.messages.append(f"[!] Unknown filter: {arg}")
+        # Join all parts after "filter" to handle compound expressions
+        filter_expr = ' '.join(parts[1:])
+
+        # Validate filter expression
+        from utils.filter_parser import parse_filter_expression, get_filter_description
+
+        try:
+            conditions = parse_filter_expression(filter_expr)
+            if conditions or filter_expr.lower() in ("none", "all"):
+                state.filter = filter_expr
+                state.page = 0  # reset to first page when filter changes
+
+                # Show human-readable description
+                if filter_expr.lower() in ("none", "all"):
+                    state.messages.append("[~] Filter cleared (showing all tasks)")
+                else:
+                    description = get_filter_description(conditions)
+                    state.messages.append(f"[~] Filter active: {description}")
+            else:
+                state.messages.append(f"[red]?[/red] Invalid filter expression: {filter_expr}")
+        except Exception as e:
+            state.messages.append(f"[red]?[/red] Filter error: {e}")
 
     elif cmd == "show":
         if len(parts) < 2:
-            state.messages.append(f'[!] Usage: show "task_id"')
+            state.messages.append(
+                '[red]?[/red] Usage: show <task_id> or show <filter_expression>\n'
+                '    Examples:\n'
+                '      show 5                    → Show task #5 details\n'
+                '      show done                 → Filter to done tasks\n'
+                '      show status=undone tag=psdc → Filter undone psdc tasks'
+            )
             return
 
+        # Check if argument is a task ID (numeric) or filter expression
         try:
             task_id = int(parts[1])
+            # It's a task ID - show task details (existing behavior)
         except ValueError:
-            state.messages.append("[!] Task ID must be a number")
+            # Not a number - treat as filter expression (NEW behavior)
+            filter_expr = ' '.join(parts[1:])
+
+            from utils.filter_parser import parse_filter_expression, get_filter_description
+
+            try:
+                conditions = parse_filter_expression(filter_expr)
+                if conditions or filter_expr.lower() in ("none", "all"):
+                    state.filter = filter_expr
+                    state.page = 0
+
+                    if filter_expr.lower() in ("none", "all"):
+                        state.messages.append("[~] Filter cleared (showing all tasks)")
+                    else:
+                        description = get_filter_description(conditions)
+                        state.messages.append(f"[~] Showing: {description}")
+                else:
+                    state.messages.append(f"[red]?[/red] Invalid filter expression: {filter_expr}")
+            except Exception as e:
+                state.messages.append(f"[red]?[/red] Filter error: {e}")
             return
 
-        task = next((t for t in state.tasks if t.id == task_id), None)
+        # Task ID path - show task details
+        task = state.get_task_by_id(task_id)  # O(1) lookup
         if not task:
-            state.messages.append(f"[!] Task {task_id} not found")
+            state.messages.append(f"[red]?[/red] Task {task_id} not found")
             return
 
         # Build rich panel with task details
@@ -553,9 +673,10 @@ def handle_command(command: str, state: AppState, console: Console):
         state.messages.append(("__PANEL__", panel))
 
     elif cmd == "tags":
-        tags = {t.tag.strip().lower() for t in state.tasks if t.tag}
-        if tags:
-            tag_list = ", ".join(sorted(tags))
+        # Use O(1) tag index instead of O(n) iteration
+        tag_stats = state.get_all_tags_with_stats()
+        if tag_stats:
+            tag_list = ", ".join(sorted(tag_stats.keys()))
             state.messages.append(
                 f"[~] Tags in use: [bold green]{tag_list}[/bold green]"
             )
@@ -564,7 +685,7 @@ def handle_command(command: str, state: AppState, console: Console):
 
     elif cmd == "?":
         if not state.tasks:
-            state.messages.append("[!] No tasks to analyze.")
+            state.messages.append("[red]?[/red] No tasks to analyze.")
             return
 
         user_prompt = Prompt.ask(
@@ -587,29 +708,44 @@ def handle_command(command: str, state: AppState, console: Console):
 Type [bold magenta]/[/bold magenta] to see all commands with descriptions in a dropdown menu!
 
 [bold cyan]📝 Common Commands:[/bold cyan]
-  [yellow]add[/yellow]              →  Add a new task (opens form)
-  [yellow]done[/yellow] <id>        →  Mark task as complete
-  [yellow]edit[/yellow] <id>        →  Edit existing task
-  [yellow]remove[/yellow] <id>      →  Delete a task
+  [yellow]add[/yellow] / [yellow]a[/yellow]          →  Add a new task (opens form)
+  [yellow]done[/yellow] / [yellow]x[/yellow] <id>    →  Mark task as complete
+  [yellow]undone[/yellow] / [yellow]u[/yellow] <id>  →  Mark task as incomplete
+  [yellow]edit[/yellow] / [yellow]e[/yellow] <id>    →  Edit existing task
+  [yellow]show[/yellow] / [yellow]s[/yellow] <id>    →  Show task details OR filter (show done, show priority=1)
+  [yellow]remove[/yellow] <id>     →  Delete a task
 
-[bold cyan]🔍 Filtering & Sorting:[/bold cyan]
-  [yellow]filter[/yellow] done      →  Show completed tasks only
-  [yellow]filter[/yellow] undone    →  Show incomplete tasks only
-  [yellow]filter[/yellow] tag:name  →  Filter by tag
-  [yellow]sort[/yellow] priority    →  Sort by priority
-  [yellow]tags[/yellow]             →  List all tags
+[bold cyan]🔍 Advanced Filtering:[/bold cyan]
+  [yellow]f[/yellow] status=done              →  Completed tasks
+  [yellow]f[/yellow] status=undone            →  Incomplete tasks
+  [yellow]show[/yellow] done                  →  More intuitive! (same as f status=done)
+  [yellow]f[/yellow] priority=1               →  High priority only
+  [yellow]f[/yellow] priority>=2              →  Medium or low priority
+  [yellow]f[/yellow] tag=psdc                 →  Tagged "psdc"
+  [yellow]f[/yellow] tag!=test                →  Not tagged "test"
+  [yellow]f[/yellow] status=done tag=psdc     →  Completed with tag (AND)
+  [yellow]show[/yellow] status=undone tag=psdc  →  Intuitive syntax!
+  [yellow]f[/yellow] tag=psdc,webasto         →  Either tag (OR)
+  [yellow]f[/yellow] tag=psdc+webasto         →  Both tags (AND)
+
+[bold cyan]📊 Sorting:[/bold cyan]
+  [yellow]sort[/yellow] priority              →  Sort by priority
+  [yellow]sort[/yellow] priority desc         →  High to low priority
+  [yellow]sort[/yellow] name asc              →  Sort by name (A→Z)
+  [yellow]tags[/yellow] / [yellow]t[/yellow]                  →  List all tags
 
 [bold cyan]🤖 AI Features (No API Key Needed!):[/bold cyan]
-  [yellow]insights[/yellow]         →  Comprehensive task analysis
-  [yellow]suggest[/yellow]          →  Smart recommendations
+  [yellow]insights[/yellow]              →  Comprehensive task analysis
+  [yellow]suggest[/yellow]               →  Smart recommendations
 
-[bold cyan]🎨 Other:[/bold cyan]
-  [yellow]view[/yellow] compact     →  Switch to compact view (20/page)
-  [yellow]next[/yellow] / [yellow]prev[/yellow]    →  Navigate pages
-  [yellow]help[/yellow]             →  Show this help
-  [yellow]exit[/yellow]             →  Save and quit
+[bold cyan]🎨 Navigation & View:[/bold cyan]
+  [yellow]next[/yellow] / [yellow]n[/yellow]             →  Next page
+  [yellow]prev[/yellow] / [yellow]p[/yellow]             →  Previous page
+  [yellow]view[/yellow] / [yellow]v[/yellow] compact     →  Switch to compact view (20/page)
+  [yellow]help[/yellow] / [yellow]h[/yellow]             →  Show this help
+  [yellow]exit[/yellow] / [yellow]q[/yellow]             →  Save and quit
 
-[dim]💡 Tip: Start typing any command for auto-complete suggestions![/dim]
+[dim]💡 Tip: Use shortcuts for faster workflow! Type [yellow]x 5[/yellow] instead of [yellow]done 5[/yellow][/dim]
         """
                 )
             )
@@ -617,3 +753,4 @@ Type [bold magenta]/[/bold magenta] to see all commands with descriptions in a d
 
     else:
         state.messages.append("Unknown or incomplete command")
+

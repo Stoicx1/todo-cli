@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(timeout 3 python:*)",
+      "Bash(py main.py:*)",
+      "Bash(del test_panel.py)",
+      "WebSearch",
+      "Bash(git log:*)",
+      "Bash(timeout 5 python:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

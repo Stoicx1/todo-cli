@@ -1,8 +1,21 @@
-venv/
+# Python
 __pycache__/
+.pytest_cache/
 *.pyc
-tasks.json
-.DS_Store
+venv/
+*.log
+
+# Environment
 .env
-.env.local
-.claude/
+
+# App data
+tasks.json
+tasks.json.backup*
+*.stackdump
+~/.todo_cli_history
+~/.todo_cli_settings.json
+
+# Editors
+.vscode/
+.idea/
+
