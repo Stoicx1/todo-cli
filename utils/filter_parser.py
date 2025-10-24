@@ -23,6 +23,7 @@ Examples:
 
 from typing import List, Tuple, Optional
 import re
+from utils.time import parse_duration
 
 
 class FilterCondition:
@@ -122,7 +123,7 @@ def parse_condition(condition_str: str) -> Optional[FilterCondition]:
                 field = field_aliases.get(field, field)
 
                 # Validate field
-                if field not in ('status', 'priority', 'tag'):
+                if field not in ('status', 'priority', 'tag', 'age'):
                     continue
 
                 # Validate value
@@ -155,6 +156,8 @@ def matches_condition(task, condition: FilterCondition) -> bool:
         return match_priority(task, operator, value)
     elif field == 'tag':
         return match_tag(task, operator, value)
+    elif field == 'age':
+        return match_age(task, operator, value)
 
     return False
 
@@ -216,6 +219,32 @@ def match_priority(task, operator: str, value: str) -> bool:
     elif operator == '<=':
         return task_priority <= target_priority
 
+    return False
+
+
+def match_age(task, operator: str, value: str) -> bool:
+    """Match age condition using created_at timestamp.
+
+    Value accepts duration strings like '30m', '2h', '3d', '1y'.
+    """
+    from utils.time import age_seconds
+
+    task_age = age_seconds(getattr(task, 'created_at', ''))
+    if task_age is None:
+        return False
+
+    target = parse_duration(value)
+    if target is None:
+        return False
+
+    if operator == '=':
+        return task_age == target
+    if operator == '!=':
+        return task_age != target
+    if operator == '>=':
+        return task_age >= target
+    if operator == '<=':
+        return task_age <= target
     return False
 
 

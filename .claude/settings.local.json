@@ -23,7 +23,8 @@
       "Read(//c/Users/Pavol Hvolka/**)",
       "WebFetch(domain:textual.textualize.io)",
       "Bash(dir /b tasks.json*)",
-      "Bash(if exist \"D:\\MyProjects\\todo-cli\\tasks.json.backup\" type \"D:\\MyProjects\\todo-cli\\tasks.json.backup\")"
+      "Bash(if exist \"D:\\MyProjects\\todo-cli\\tasks.json.backup\" type \"D:\\MyProjects\\todo-cli\\tasks.json.backup\")",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

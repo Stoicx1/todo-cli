@@ -1,4 +1,4 @@
-"""
+﻿"""
 TaskDetailModal - Modal for displaying task details with edit option
 """
 
@@ -110,17 +110,17 @@ class TaskDetailModal(ModalScreen[str | None]):
         """Compose the modal layout"""
         # Icons and emojis with ASCII fallback
         if USE_UNICODE:
-            status_icon = "✓" if self._task_data.done else "⏳"
-            priority_icons = {1: "🔴", 2: "🟡", 3: "🟢"}
-            priority_icon = priority_icons.get(self._task_data.priority, "⚪")
+            status_icon = ("✔" if USE_UNICODE else "+") if self._task_data.done else ("✗" if USE_UNICODE else "-")
+            priority_labels = {1: "HIGH", 2: "MED", 3: "LOW"}
+            priority_label = priority_labels.get(self._task_data.priority, "?")
             tag_icon = "#"
-            divider = "─" * 60
+            divider = ("─" * 60) if USE_UNICODE else ("-" * 60)
         else:
-            status_icon = "[DONE]" if self._task_data.done else "[TODO]"
-            priority_icons = {1: "HIGH", 2: "MED", 3: "LOW"}
-            priority_icon = priority_icons.get(self._task_data.priority, "?")
+            status_icon = ("✔" if USE_UNICODE else "+") if self._task_data.done else ("✗" if USE_UNICODE else "-")
+            priority_labels = {1: "HIGH", 2: "MED", 3: "LOW"}
+            priority_label = priority_labels.get(self._task_data.priority, "?")
             tag_icon = "#"
-            divider = "-" * 60
+            divider = ("─" * 60) if USE_UNICODE else ("-" * 60)
 
         # Status color
         if self._task_data.done:
@@ -133,7 +133,7 @@ class TaskDetailModal(ModalScreen[str | None]):
         priority_label = priority_labels.get(self._task_data.priority, "???")
         priority_colors = {1: "red", 2: "yellow", 3: "green"}
         priority_color = priority_colors.get(self._task_data.priority, "white")
-        priority_display = f"{priority_icon} [{priority_color}]{priority_label}[/{priority_color}]"
+        priority_display = f"[{priority_color}]{priority_label}[/{priority_color}]"
 
         # Build content
         with Container():
@@ -177,6 +177,12 @@ class TaskDetailModal(ModalScreen[str | None]):
                     created_icon = "📅" if USE_UNICODE else "Created:"
                     yield Static(f"[dim]{created_icon} Created {created_time}[/dim]", classes="content")
 
+                if getattr(self._task_data, 'updated_at', ''):
+                    from core.commands import get_relative_time
+                    updated_time = get_relative_time(self._task_data.updated_at)
+                    updated_icon = "✎" if USE_UNICODE else "Updated:"
+                    yield Static(f"[dim]{updated_icon} Updated {updated_time}[/dim]", classes="content")
+
                 if self._task_data.done and self._task_data.completed_at:
                     from core.commands import get_relative_time
                     completed_time = get_relative_time(self._task_data.completed_at)
@@ -209,3 +215,4 @@ class TaskDetailModal(ModalScreen[str | None]):
     def action_edit(self) -> None:
         """Handle E key"""
         self.dismiss("edit")
+

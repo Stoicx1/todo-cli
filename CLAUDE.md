@@ -86,8 +86,13 @@ The application supports dual UI modes (Textual and Rich):
 - **core/suggestions.py**: Local AI insights system (no API required)
 - **core/file_safety.py**: `SafeFileManager` - file locking, atomic writes, backup/recovery
 - **models/task.py**: `Task` dataclass representing individual tasks
+  - NEW: `updated_at` timestamp field (auto-set on edit/done/undone) (2025-10-24)
 - **models/ai_message.py**: `AIMessage` dataclass for AI conversation history
 - **assistant.py**: GPT integration (OpenAI API) for task analysis and suggestions (optional)
+- **utils/time.py**: Time utilities for humanizing durations (NEW - 2025-10-24)
+  - `humanize_age()` - Convert ISO timestamp to compact format (5m, 3h, 2d, 1y)
+  - `parse_duration()` - Parse duration strings to seconds
+  - `age_seconds()` - Get age in seconds from ISO timestamp
 
 **Textual UI Components (Default):**
 - **textual_app.py**: Modern reactive TUI application
@@ -96,6 +101,8 @@ The application supports dual UI modes (Textual and Rich):
   - Comprehensive error handling (NEW - 2025-10-23)
 - **textual_widgets/task_table.py**: DataTable with color-coded tasks
   - Fixed row mapping for detail view (FIXED - 2025-10-23)
+  - NEW: Age column (ID | Age | Priority | Tags | Task) (2025-10-24)
+  - Clean, cross-platform glyphs for better compatibility (2025-10-24)
 - **textual_widgets/command_input.py**: Command input with autocomplete
   - Event bubbling prevention (FIXED - 2025-10-23)
   - Command history navigation
@@ -135,7 +142,7 @@ The application supports dual UI modes (Textual and Rich):
 - `state.page_size`: Dynamically set based on view mode (20 for compact, 10 for detail)
 - `state.view_mode`: "compact" or "detail"
 - `state.filter`: "none", "done", "undone", or "tag:<tagname>"
-- `state.sort`: "priority", "id", or "name"
+- `state.sort`: "priority", "id", "name", or "age" (NEW - 2025-10-24)
 - `state.messages`: Status messages displayed in a panel below the dashboard
 - **NEW:** `state.filtered_tasks` - Cached property for filtered tasks (invalidates automatically)
 - **NEW:** `state._task_index` - O(1) task lookup by ID
@@ -378,7 +385,7 @@ remove <id>
 show <id>
 view compact|detail
 next/prev
-sort id|name|priority
+sort id|name|priority|age
 filter <expression>
 tags
 insights (local AI analysis)
@@ -553,15 +560,17 @@ Comprehensive debug logging infrastructure for troubleshooting and issue reporti
 
 **Features:**
 - Timestamped log entries with severity levels (DEBUG, INFO, ERROR)
-- Automatic log rotation on app start (clears previous session)
+- Rolling log file limit (2000 lines max, trims to 1500) (NEW - 2025-10-24)
+- Thread-safe logging with proper locking (NEW - 2025-10-24)
 - Exception logging with full stack traces
 - AI flow tracing (12-step event tracking from input → worker → completion)
-- Thread-safe logging from worker threads
+- Session history maintenance (NEW - 2025-10-24)
 
 **Implementation:** `debug_logger.py`
 - `DebugLogger` class with singleton pattern
 - Writes to `debug_ai_flow.log` in project root
 - Global `debug_log` instance used throughout codebase
+- Automatic trimming when file exceeds 2000 lines (prevents unbounded growth)
 
 **Usage:**
 ```python

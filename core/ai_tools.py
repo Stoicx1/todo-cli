@@ -1,4 +1,4 @@
-"""
+﻿"""
 LangChain AI Tools for Task Management
 
 Provides 8 tools that allow the LangChain agent to interact with tasks:
@@ -18,6 +18,7 @@ from langchain.tools import tool
 from datetime import datetime
 
 from models.task import Task
+from utils.tag_parser import parse_tags
 from config import validation, ai as ai_config
 from debug_logger import debug_log
 
@@ -166,6 +167,34 @@ def create_task(
             debug_log.debug(f"[AI_TOOLS] Validation failed - comment too long ({len(comment)} chars)")
             return f"❌ Error: Comment too long (max {validation.MAX_COMMENT_LENGTH} chars)"
 
+        # Create task via AppState (ensures IDs, tags, indices stay consistent)
+        debug_log.debug(f"[AI_TOOLS] Adding task via AppState.add_task()...")
+        state.add_task(
+            name=name,
+            comment=comment.strip(),
+            description=description.strip(),
+            priority=priority,
+            tag=tag
+        )
+        new_id = state.tasks[-1].id if state.tasks else None
+        debug_log.info(f"[AI_TOOLS] Task created successfully - ID={new_id}, name='{name[:30]}'")
+
+        # Persist to disk
+        _save_tasks()
+
+        # Format response
+        priority_labels = {1: "HIGH", 2: "MEDIUM", 3: "LOW"}
+        priority_label = priority_labels.get(priority, "UNKNOWN")
+
+        result = f"Created task #{new_id}: {name}"
+        result += f"\n   Priority: {priority_label}"
+        if tag:
+            result += f"\n   Tag: {tag}"
+        if comment:
+            result += f"\n   Comment: {comment}"
+
+        return result
+
         # Generate next ID
         next_id = max([t.id for t in state.tasks], default=0) + 1
         debug_log.debug(f"[AI_TOOLS] Generated next ID: {next_id}")
@@ -192,7 +221,7 @@ def create_task(
         priority_labels = {1: "HIGH", 2: "MEDIUM", 3: "LOW"}
         priority_label = priority_labels.get(priority, "UNKNOWN")
 
-        result = f"✅ Created task #{next_id}: {name}"
+        result = f"Created task #{new_id if 'new_id' in locals() else 'N/A'}: {name}"
         result += f"\n   Priority: {priority_label}"
         if tag:
             result += f"\n   Tag: {tag}"
@@ -289,6 +318,13 @@ def edit_task(task_id: int, field: str, value: str) -> str:
                 debug_log.debug(f"[AI_TOOLS] Validation failed - tag too long")
                 return f"❌ Error: Tag too long (max {validation.MAX_TAG_LENGTH} chars)"
             task.tag = tag
+            # Normalize comma-separated tags and update tag index
+            raw = value.strip()
+            tags = parse_tags(raw)
+            old_tags = list(task.tags)
+            task.tags = tags
+            task.tag = tags[0] if tags else ""
+            state._update_tag_index_for_task(task, old_tags=old_tags)
 
         elif field == "description":
             if len(value) > validation.MAX_DESCRIPTION_LENGTH:
@@ -307,6 +343,11 @@ def edit_task(task_id: int, field: str, value: str) -> str:
             return f"❌ Error: Invalid field '{field}'. Valid fields: name, priority, tag, description, comment"
 
         # Save changes
+        # Touch updated_at after edits
+        try:
+            task.updated_at = datetime.now().isoformat()
+        except Exception:
+            pass
         _save_tasks()
         # Invalidate cache after modification
         state.invalidate_filter_cache()  # CRITICAL: Invalidate cache after state modification
@@ -354,6 +395,14 @@ def complete_task(task_id: int) -> str:
 
         # Mark as done
         task.done = True
+        try:
+            task.completed_at = datetime.now().isoformat()
+        except Exception:
+            task.completed_at = task.completed_at or ""
+        try:
+            task.updated_at = datetime.now().isoformat()
+        except Exception:
+            pass
         state.invalidate_filter_cache()  # CRITICAL: Invalidate cache after state modification
         _save_tasks()
         debug_log.info(f"[AI_TOOLS] Task marked complete - ID={task_id}, name='{task.name[:30]}'")
@@ -400,7 +449,12 @@ def uncomplete_task(task_id: int) -> str:
 
         # Mark as not done
         task.done = False
+        task.completed_at = ""
         state.invalidate_filter_cache()  # CRITICAL: Invalidate cache after state modification
+        try:
+            task.updated_at = datetime.now().isoformat()
+        except Exception:
+            pass
         _save_tasks()
         debug_log.info(f"[AI_TOOLS] Task marked incomplete - ID={task_id}")
 
@@ -581,7 +635,7 @@ def get_task_details(task_id: int) -> str:
         priority_label = {1: "🔴 HIGH", 2: "🟡 MEDIUM", 3: "🟢 LOW"}.get(task.priority, "UNKNOWN")
 
         result = f"**Task #{task.id}**: {task.name}\n\n"
-        result += f"**Status**: {status}\n"
+        result += f"**Status**: "
         result += f"**Priority**: {priority_label}\n"
 
         if task.tag:
@@ -696,3 +750,4 @@ def get_all_tools():
         get_task_details,
         get_task_statistics,
     ]
+

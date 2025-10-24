@@ -1,4 +1,4 @@
-from typing import Optional
+﻿from typing import Optional
 from rich.console import Console
 from rich.prompt import Prompt
 from rich.panel import Panel
@@ -284,6 +284,11 @@ def handle_done(command_arguments: list[str], state: AppState, console: Console)
             debug_log.debug(f"[handle_done] Marking task {task_id} as done")
             task.done = True
             task.completed_at = datetime.now().isoformat()
+            try:
+                task.updated_at = datetime.now().isoformat()
+            except Exception:
+                pass
+            task.completed_at = datetime.now().isoformat()
             marked.append(task_id)
         else:
             debug_log.debug(f"[handle_done] Task {task_id} not found")
@@ -336,8 +341,13 @@ def handle_undone(command_arguments: list[str], state: AppState, console: Consol
     for task_id in task_ids:
         task = state.get_task_by_id(task_id)  # O(1) lookup
         if task:
+            try:
+                task.updated_at = datetime.now().isoformat()
+            except Exception:
+                pass
             debug_log.debug(f"[handle_undone] Unmarking task {task_id}")
             task.done = False
+            task.completed_at = ""
             task.completed_at = ""  # Clear completion timestamp
             unmarked.append(task_id)
         else:
@@ -506,6 +516,10 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
                 task.tag = tag_list[0] if tag_list else ""
                 task.tags = tag_list
 
+            try:
+                task.updated_at = datetime.now().isoformat()
+            except Exception:
+                pass
             # UPDATE TASK INDEX (defensive - ensures consistency)
             if state._task_index is not None:
                 state._task_index[task.id] = task
@@ -555,7 +569,7 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
         debug_log.info(f"[sort] Args: {parts[1:]}")
         # Supported:
         #   sort                           → toggle order (quick flip)
-        #   sort <id|name|priority> [asc|desc]
+        #   sort <id|name|priority|age> [asc|desc]
         #   sort <priority> high|low       → friendly aliases
         #   sort order <asc|desc>
         if len(parts) == 1:
@@ -583,8 +597,8 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
 
         # Case: sort <field> [asc|desc]
         field = parts[1]
-        if field not in ("id", "name", "priority"):
-            state.messages.append('[red]?[/red] Usage: sort "id" / "name" / "priority" [asc|desc]')
+        if field not in ("id", "name", "priority", "age"):
+            state.messages.append('[red]?[/red] Usage: sort \"id\" / \"name\" / \"priority\" / \"age\" [asc|desc]')
             return
 
         # Handle friendly aliases for priority order
@@ -710,6 +724,7 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
             priority_icons = {1: "🔴", 2: "🟡", 3: "🟢"}
             priority_icon = priority_icons.get(task.priority, "⚪")
             tag_icon = "#"  # Safe, consistent width
+            updated_icon = "Updated:"
             created_icon = "📅"
             completed_icon = "✅"
             divider = "─" * 60
@@ -773,6 +788,9 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
         # Metadata section: timestamps
         created_time = get_relative_time(task.created_at)
         content_lines.append(f"[dim]{created_icon} Created {created_time}[/dim]")
+        if getattr(task, "updated_at", ""):
+            updated_time = get_relative_time(task.updated_at)
+            content_lines.append(f"[dim]Updated: Updated {updated_time}[/dim]")
 
         if task.done and task.completed_at:
             completed_time = get_relative_time(task.completed_at)
@@ -909,6 +927,35 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
         state.messages.append("[💾] Tasks saved successfully")
 
     elif cmd == "help":
+        # Detailed help: help <command>
+        if len(parts) > 1:
+            topic = COMMAND_ALIASES.get(parts[1].lower(), parts[1].lower())
+            from textwrap import dedent as _ded
+            def _block(title, body):
+                return _ded(f"\n[bold cyan]{title}[/bold cyan]\n{body}\n")
+            details = {
+                "add": _block("add (a)", "Usage: add → opens form\n       add \"name\" \"comment\" \"description\" <priority> \"tags\"\nNotes: tags: comma-separated up to 3; priority 1..3; created_at set automatically."),
+                "edit": _block("edit (e)", "Usage: edit <id> → opens form\nNotes: updates updated_at; tags accept comma list."),
+                "done": _block("done (x/d)", "Usage: done <id> [ids...]\nNotes: sets completed_at and updated_at."),
+                "undone": _block("undone (u)", "Usage: undone <id> [ids...]\nNotes: clears completed_at; sets updated_at."),
+                "remove": _block("remove (r)", "Usage: remove <id> [ids...] → delete with confirmation."),
+                "show": _block("show (s)", "Usage: show <id> → details with Created/Updated/Completed\n       show <filter> → apply filter (e.g., show age>=3d)"),
+                "filter": _block("filter (f)", "Usage: filter <expr>\nFields: status, priority, tag, age\nExamples: status=done, priority>=2, tag=psdc+webasto, age>=3d"),
+                "sort": _block("sort", "Usage: sort <id|name|priority|age> [asc|desc]\nExamples: sort age desc (oldest first)"),
+                "tags": _block("tags (t)", "Usage: tags → list all tags"),
+                "insights": _block("insights", "Usage: insights → local analysis (no API key needed)"),
+                "suggest": _block("suggest", "Usage: suggest → quick recommendations (local)"),
+                "?": _block("? (AI)", "Usage: ? <question> → ask AI (requires API key)\nSubcommands: ? clear | ? memory | ? export [file] | ? reset"),
+                "save": _block("save", "Usage: save → persist tasks immediately"),
+                "exit": _block("exit (q)", "Usage: exit | quit | q → save and quit"),
+                "view": _block("view (v)", "Usage: view compact | view detail"),
+                "next": _block("next (n)", "Usage: next → next page"),
+                "prev": _block("prev (p)", "Usage: prev → previous page"),
+            }
+            body = details.get(topic)
+            if body:
+                state.messages.append(body)
+                return
         state.messages.append(
             (
                 dedent(
@@ -980,4 +1027,5 @@ Type [bold magenta]/[/bold magenta] to see all commands with descriptions in a d
     # Log state after command execution
     _log_state_snapshot("AFTER", state)
     debug_log.info(f"[COMMANDS] Command '{cmd}' completed")
+
 

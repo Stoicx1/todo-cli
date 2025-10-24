@@ -308,3 +308,7 @@ Check your syntax:
 ---
 
 **Need help?** Type `/` to see all available commands!
+
+## Age
+- Sort: sort age [asc|desc] (asc=youngest first)
+- Filter: ge>=3d, ge<=2h, ge>=30m`n- Column: ID | Age | Priority | Tags | Task

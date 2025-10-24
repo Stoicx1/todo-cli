@@ -445,3 +445,8 @@ All commands now provide helpful error messages when used incorrectly:
 ---
 
 **Need help?** Type `help` in the app or `/` to browse all available commands!
+
+## Age Support (Oct 2025)
+- Column layout: ID | Age | Priority | Tags | Task
+- Sort: sort age [asc|desc] (asc=youngest first)
+- Filter: ilter age>=3d, ilter age<=2h, ilter age>=30m`n- Age is derived from created_at and cannot be set directly

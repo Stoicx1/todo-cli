@@ -17,6 +17,7 @@ from typing import Any, Optional, Dict
 from pathlib import Path
 from rich.console import Console
 from utils.file_validators import validate_filename
+import threading
 
 
 class FileSafetyError(Exception):
@@ -82,6 +83,8 @@ class SafeFileManager:
         self.lock_timeout = lock_timeout
         self.backup_count = backup_count
         self.console = console or Console()
+        # Intra-process write lock to serialize saves
+        self._write_lock: threading.Lock = threading.Lock()
 
     def atomic_write_json(self, data: Dict[str, Any], indent: int = 4):
         """
@@ -232,14 +235,16 @@ class SafeFileManager:
             FileLockTimeoutError: If can't acquire lock
             FileSafetyError: If save fails
         """
-        # Rotate and create backup if requested
-        if create_backup and self.filename.exists():
-            self._rotate_backups()
-            backup_path = self._get_backup_path(0)
-            shutil.copy2(self.filename, backup_path)
+        # Serialize writes within process
+        with self._write_lock:
+            # Rotate and create backup if requested
+            if create_backup and self.filename.exists():
+                self._rotate_backups()
+                backup_path = self._get_backup_path(0)
+                shutil.copy2(self.filename, backup_path)
 
-        # Atomic write ensures file replacement is safe
-        self.atomic_write_json(data, indent)
+            # Atomic write ensures file replacement is safe
+            self.atomic_write_json(data, indent)
 
     def load_json_with_lock(self) -> Dict[str, Any]:
         """

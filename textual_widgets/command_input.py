@@ -1,4 +1,4 @@
-"""
+﻿"""
 CommandInput Widget - Command line input with autocomplete
 """
 
@@ -29,7 +29,8 @@ class CommandSuggester(Suggester):
         "e": "Shortcut: edit task (form)",
         "x": "Shortcut for done",
         "u": "Shortcut for undone",
-        "d": "Shortcut for delete",
+        "d": "Shortcut for done",
+        "r": "Shortcut for remove",
         "s": "Shortcut for show",
 
         # Filtering & Sorting
@@ -74,6 +75,9 @@ class CommandSuggester(Suggester):
         "priority=2",
         "priority=3",
         "priority>=2",
+        "age>=1d",
+        "age<=2h",
+        "age>=30m",
         "tag=",
         "tag!=",
     ]
@@ -242,3 +246,4 @@ class CommandInput(Input):
     def on_blur(self) -> None:
         """Handle blur event - notify app that command input is inactive"""
         self.post_message(self.CommandBlurred())
+

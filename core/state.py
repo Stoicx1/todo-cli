@@ -313,6 +313,7 @@ class AppState:
             - "priority": Sort by task priority (ascending).
             - "id":       Sort by task ID (ascending).
             - "name":     Sort alphabetically by task name.
+            - "age":      Sort by task age (younger/older)
 
         Args:
             tasks (list): The list of Task objects to sort.
@@ -329,6 +330,15 @@ class AppState:
         if self.sort == "name":
             # Case-insensitive sort for better UX
             return sorted(tasks, key=lambda t: (t.name or "").casefold(), reverse=reverse)
+        if self.sort == "age":
+            # Compute age seconds from created_at; unknowns to far end
+            from utils.time import age_seconds
+            def key_age(t):
+                a = age_seconds(getattr(t, 'created_at', ''))
+                return a if a is not None else (10**12)  # push invalid to end
+            # age asc = youngest first (smaller age to larger?) Actually 'asc' => smaller age => younger first
+            reverse_flag = (self.sort_order == "desc")  # desc => oldest first => larger age first
+            return sorted(tasks, key=key_age, reverse=reverse_flag)
         return tasks  # Fallback: return unsorted if sort option is unknown
 
     def get_current_page_tasks(self):
@@ -378,12 +388,24 @@ class AppState:
         try:
             # Debug logging BEFORE save (critical for detecting data loss)
             from debug_logger import debug_log
-            debug_log.info(f"[STATE] save_to_file() - Saving {len(self.tasks)} tasks to {filename}")
+            try:
+                import threading as _t
+                thread_name = _t.current_thread().name
+            except Exception:
+                thread_name = "unknown"
+            debug_log.info(f"[STATE] save_to_file() - Saving {len(self.tasks)} tasks to {filename} [thread={thread_name}]")
             if self.tasks:
                 task_ids = sorted([t.id for t in self.tasks])
                 debug_log.debug(f"[STATE] Task IDs being saved: {task_ids}")
             else:
                 debug_log.warning("[STATE] WARNING: Saving empty task list!")
+                # Prevent catastrophic overwrite if previously had tasks
+                if self._last_saved_count > 0:
+                    warning_mark = "�s�" if USE_UNICODE else "!"
+                    console.print(
+                        f"[red]{warning_mark} CRITICAL: Refusing to overwrite existing tasks with empty list (previous: {self._last_saved_count})."
+                    )
+                    return
 
             # Data integrity validation (safety net against data loss)
             # Compare to last known state instead of arbitrary threshold
@@ -537,7 +559,15 @@ class AppState:
                 "view_mode": getattr(self, "view_mode", "compact"),
                 "filter": getattr(self, "filter", "none"),
             }
-            settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            # Atomic write to avoid corrupting settings on crash
+            tmp = settings_path.with_suffix(settings_path.suffix + ".tmp")
+            tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            try:
+                import os
+                os.replace(tmp, settings_path)
+            except Exception:
+                # Fallback non-atomic replace
+                settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         except Exception:
             # Best-effort; ignore errors to not impact main flow
             pass
