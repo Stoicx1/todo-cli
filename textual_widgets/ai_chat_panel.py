@@ -74,7 +74,9 @@ class AIChatPanel(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         """Compose initial layout"""
-        yield Label("No conversation yet. Ask AI a question!", id="empty_message")
+        # Empty - messages added dynamically via update_from_state()
+        # This prevents duplicate ID error when update_from_state() mounts empty_message
+        return []
 
     def update_from_state(self):
         """

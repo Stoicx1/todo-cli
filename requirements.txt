@@ -15,3 +15,8 @@ python-dotenv>=1.0.0,<2.0.0
 
 # File Safety
 portalocker>=2.8.2
+
+# LangChain AI Agent System (Phase 3 - AI Enhancement)
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-community>=0.0.20

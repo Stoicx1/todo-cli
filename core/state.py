@@ -52,6 +52,9 @@ class AppState:
         self._filter_cache_dirty: bool = True  # True = needs recalculation
         self._current_filter: str = "none"  # Track filter changes
 
+        # Data integrity tracking (for detecting catastrophic data loss)
+        self._last_saved_count: int = 0  # Track task count for validation
+
     def add_task(
         self, name: str, comment: str, description: str, priority: int, tag: str
     ):
@@ -96,6 +99,9 @@ class AppState:
             self._tag_index[tag].append(task)
 
         self.next_id += 1
+
+        # Invalidate filter cache after adding task (CRITICAL FIX)
+        self.invalidate_filter_cache()
 
     def get_task_by_id(self, task_id: int) -> Optional[Task]:
         """
@@ -370,6 +376,40 @@ class AppState:
             )
 
         try:
+            # Debug logging BEFORE save (critical for detecting data loss)
+            from debug_logger import debug_log
+            debug_log.info(f"[STATE] save_to_file() - Saving {len(self.tasks)} tasks to {filename}")
+            if self.tasks:
+                task_ids = sorted([t.id for t in self.tasks])
+                debug_log.debug(f"[STATE] Task IDs being saved: {task_ids}")
+            else:
+                debug_log.warning("[STATE] WARNING: Saving empty task list!")
+
+            # Data integrity validation (safety net against data loss)
+            # Compare to last known state instead of arbitrary threshold
+            current_count = len(self.tasks)
+
+            # CRITICAL: Attempting to save empty list when tasks existed
+            if current_count == 0 and self._last_saved_count > 0:
+                debug_log.error(
+                    f"[STATE] CRITICAL: Attempting to save 0 tasks (previous: {self._last_saved_count})"
+                )
+                warning_mark = "⚠" if USE_UNICODE else "!"
+                console.print(
+                    f"[red]{warning_mark} CRITICAL: Attempting to delete ALL {self._last_saved_count} tasks! "
+                    f"Check backup files.[/red]"
+                )
+
+            # MAJOR: Task count dropped by >50%
+            elif current_count < self._last_saved_count * 0.5 and self._last_saved_count > 5:
+                debug_log.warning(
+                    f"[STATE] WARNING: Task count dropped {self._last_saved_count} → {current_count}"
+                )
+                warning_mark = "⚠" if USE_UNICODE else "!"
+                console.print(
+                    f"[yellow]{warning_mark} Warning: Task count dropped from {self._last_saved_count} to {current_count}[/yellow]"
+                )
+
             # Serialize tasks to dictionary format using asdict() (more efficient than __dict__)
             tasks_data = [asdict(task) for task in self.tasks]
 
@@ -380,8 +420,12 @@ class AppState:
                 indent=performance.JSON_INDENT
             )
 
+            debug_log.info(f"[STATE] Save successful - {len(self.tasks)} tasks written")
             check_mark = "✓" if USE_UNICODE else "+"
             console.print(f"[green]{check_mark}[/green] Tasks saved to [bold]{filename}[/bold]")
+
+            # Update last saved count for next validation
+            self._last_saved_count = current_count
 
             # Persist preferences (best-effort)
             self._save_preferences()

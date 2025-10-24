@@ -3,6 +3,9 @@ Textual TUI Application for Todo CLI
 Modern reactive terminal user interface
 """
 
+import signal
+import asyncio
+from enum import Enum
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Vertical, Horizontal
@@ -26,6 +29,14 @@ from config import DEFAULT_TASKS_FILE, DEFAULT_AI_CONVERSATION_FILE
 from debug_logger import debug_log
 
 
+class LayoutMode(Enum):
+    """Layout modes for toggle cycling"""
+    TASKS_ONLY = 1
+    HORIZONTAL_SPLIT = 2
+    AI_ONLY = 3
+    VERTICAL_SPLIT = 4
+
+
 class TodoTextualApp(App):
     """
     Modern Textual-based Todo CLI Application
@@ -39,6 +50,10 @@ class TodoTextualApp(App):
 
     TITLE = "Todo CLI (Textual)"
     SUB_TITLE = "Modern Task Management"
+
+    # Disable text selection to prevent IndexError crash (Textual upstream bug)
+    # See: textual/selection.py:66 - list index out of range when selection coordinates invalid
+    ENABLE_SELECTION = False
 
     # CSS_PATH = "styles/main.tcss"  # Temporarily disabled - using inline CSS
 
@@ -208,7 +223,7 @@ class TodoTextualApp(App):
     }
 
     #task_container {
-        width: 70%;
+        /* width set dynamically via _apply_layout_mode() */
         layout: vertical;
     }
 
@@ -219,7 +234,7 @@ class TodoTextualApp(App):
 
     /* AI Chat Panel */
     #ai_chat_panel {
-        width: 30%;
+        /* width set dynamically via _apply_layout_mode() */
         border: solid cyan;
         background: $panel;
         padding: 1;
@@ -322,6 +337,11 @@ class TodoTextualApp(App):
         self._command_input = None
         self._ai_panel = None
         self._ai_input = None
+        self._task_container = None
+        self._main_container = None
+
+        # Layout mode tracking for 4-state toggle
+        self.layout_mode = LayoutMode.HORIZONTAL_SPLIT  # Default: 50:50 horizontal
 
         # Use Textual's built-in self.console (removed external RichConsole)
 
@@ -436,6 +456,10 @@ class TodoTextualApp(App):
             self._command_input = self.query_one(CommandInput)
             self._ai_input = self.query_one(AIInput)
 
+            # Cache container references for layout management
+            self._task_container = self.query_one("#task_container")
+            self._main_container = self.query_one("#main_container")
+
             # Cache AI panel reference (may fail if widget not mounted)
             try:
                 self._ai_panel = self.query_one(AIChatPanel)
@@ -495,6 +519,19 @@ class TodoTextualApp(App):
         else:
             debug_log.error("Cannot set focus - task table reference is None")
 
+        # Register signal handlers for graceful shutdown (Ctrl+C, kill)
+        # Note: Using signal.signal() instead of asyncio's add_signal_handler()
+        # because add_signal_handler() is not supported on Windows
+        debug_log.info("Registering signal handlers for graceful shutdown...")
+        try:
+            # Register SIGINT (Ctrl+C) and SIGTERM (kill command)
+            signal.signal(signal.SIGINT, lambda sig, frame: self._handle_signal(sig))
+            signal.signal(signal.SIGTERM, lambda sig, frame: self._handle_signal(sig))
+            debug_log.info("Signal handlers registered successfully (SIGTERM, SIGINT)")
+        except Exception as e:
+            debug_log.warning(f"Failed to register signal handlers: {e}")
+            debug_log.warning("Graceful shutdown via Ctrl+C may not work properly")
+
         debug_log.info("=" * 80)
         debug_log.info("on_mount() COMPLETED - App should now be visible")
         debug_log.info("=" * 80)
@@ -506,15 +543,23 @@ class TodoTextualApp(App):
 
         Includes error boundaries to handle widget reference failures gracefully.
         """
+        # Debug logging to track state synchronization
+        debug_log.info(f"[APP] refresh_table() called - {len(self.state.tasks)} tasks in state")
+        if self.state.tasks:
+            task_ids = sorted([t.id for t in self.state.tasks])
+            debug_log.debug(f"[APP] Task IDs in state: {task_ids[:10]}{'...' if len(task_ids) > 10 else ''}")
+
         # Use cached widget references with null checks (safety)
         try:
             if self._task_table:
                 self._task_table.update_from_state(self.state)
+                debug_log.debug(f"[APP] Task table updated successfully")
             else:
                 self.log.warning("Task table reference is None, skipping update")
 
             if self._status_bar:
                 self._status_bar.update_from_state(self.state)
+                debug_log.debug(f"[APP] Status bar updated successfully")
             else:
                 self.log.warning("Status bar reference is None, skipping update")
 
@@ -907,25 +952,79 @@ Ctrl+Shift+C - Clear AI q - Quit
     # AI ACTIONS (Phase 2.3)
     # =========================================================================
 
+    def _apply_layout_mode(self) -> None:
+        """Apply current layout mode by adjusting widget visibility and CSS"""
+        if not self._task_container or not self._main_container or not self._ai_panel:
+            return
+
+        if self.layout_mode == LayoutMode.TASKS_ONLY:
+            # Hide AI, tasks full width
+            self._ai_panel.display = False
+            self._ai_input.display = False
+            self._task_container.display = True
+            self._task_container.styles.width = "100%"
+            self._task_container.styles.height = "1fr"
+            self._main_container.styles.layout = "horizontal"
+
+        elif self.layout_mode == LayoutMode.HORIZONTAL_SPLIT:
+            # Show both, 50:50 side by side
+            self._task_container.display = True
+            self._ai_panel.display = True
+            self._ai_input.display = True
+            self._task_container.styles.width = "50%"
+            self._task_container.styles.height = "1fr"
+            self._ai_panel.styles.width = "50%"
+            self._ai_panel.styles.height = "1fr"
+            self._main_container.styles.layout = "horizontal"
+
+        elif self.layout_mode == LayoutMode.AI_ONLY:
+            # Hide tasks, AI full width
+            self._task_container.display = False
+            self._ai_panel.display = True
+            self._ai_input.display = True
+            self._ai_panel.styles.width = "100%"
+            self._ai_panel.styles.height = "1fr"
+            self._main_container.styles.layout = "horizontal"
+
+        elif self.layout_mode == LayoutMode.VERTICAL_SPLIT:
+            # Show both, 50:50 stacked (vertical)
+            self._task_container.display = True
+            self._ai_panel.display = True
+            self._ai_input.display = True
+            self._task_container.styles.width = "100%"
+            self._task_container.styles.height = "50%"
+            self._ai_panel.styles.width = "100%"
+            self._ai_panel.styles.height = "50%"
+            self._main_container.styles.layout = "vertical"
+
     def action_toggle_ai_panel(self) -> None:
-        """Toggle AI chat panel visibility (Ctrl+A)"""
+        """Cycle through 4 layout modes: Tasks→H-Split→AI→V-Split (Ctrl+A)"""
         if not self._ai_panel or not self._ai_input:
             self.notify("AI panel not available", severity="warning")
             return
 
-        self.ai_panel_visible = not self.ai_panel_visible
-        self._ai_panel.display = self.ai_panel_visible
-        self._ai_input.display = self.ai_panel_visible
+        # Cycle to next mode
+        modes = list(LayoutMode)
+        current_idx = modes.index(self.layout_mode)
+        next_idx = (current_idx + 1) % len(modes)
+        self.layout_mode = modes[next_idx]
 
-        if self.ai_panel_visible:
-            self.notify("AI panel shown")
-        else:
-            self.notify("AI panel hidden")
+        # Apply layout changes
+        self._apply_layout_mode()
+
+        # Notify user
+        mode_names = {
+            LayoutMode.TASKS_ONLY: "Tasks only",
+            LayoutMode.HORIZONTAL_SPLIT: "50:50 Horizontal",
+            LayoutMode.AI_ONLY: "AI only",
+            LayoutMode.VERTICAL_SPLIT: "50:50 Vertical"
+        }
+        self.notify(f"Layout: {mode_names[self.layout_mode]}")
 
     def action_ask_ai(self) -> None:
         """Focus AI input field and prompt for question (?)"""
-        if not self.ai_panel_visible:
-            # Show AI panel first
+        # If AI hidden (TASKS_ONLY mode), cycle to show it
+        if self.layout_mode == LayoutMode.TASKS_ONLY:
             self.action_toggle_ai_panel()
 
         # Focus AI input
@@ -1054,7 +1153,7 @@ Ctrl+Shift+C - Clear AI q - Quit
 
             # Initialize assistant
             debug_log.debug("[STEP 12] Initializing Assistant...")
-            assistant = Assistant()
+            assistant = Assistant(state=self.state)
             debug_log.debug(f"[STEP 12] Assistant initialized: {type(assistant).__name__}")
 
             # Get conversation context (last 20 messages)
@@ -1074,15 +1173,13 @@ Ctrl+Shift+C - Clear AI q - Quit
 
             self.call_from_thread(create_message)
 
-            # Stream response chunks
-            debug_log.debug("[STEP 12] Starting stream from OpenAI API...")
+            # Use LangChain agent with streaming callback
+            debug_log.debug("[STEP 12] Starting LangChain agent with streaming...")
             chunk_count = 0
 
-            for chunk in assistant.stream_with_context(
-                self.state.tasks,
-                user_prompt,
-                conversation_context
-            ):
+            def streaming_callback(chunk):
+                """Streaming callback for agent responses"""
+                nonlocal chunk_count, response_content
                 chunk_count += 1
                 response_content += chunk
 
@@ -1097,7 +1194,9 @@ Ctrl+Shift+C - Clear AI q - Quit
 
                 self.call_from_thread(update_content)
 
-            debug_log.debug(f"[STEP 12] Stream complete: {chunk_count} chunks, {len(response_content)} total chars")
+            # Call LangChain agent (uses tools if needed)
+            response = assistant.ask(user_prompt, streaming_callback=streaming_callback)
+            debug_log.debug(f"[STEP 12] Agent complete: {chunk_count} chunks, {len(response_content)} total chars")
 
             # Hide streaming indicator
             self.call_from_thread(ai_panel.hide_streaming_indicator)
@@ -1111,6 +1210,12 @@ Ctrl+Shift+C - Clear AI q - Quit
                 self.console
             )
             debug_log.debug("[STEP 12] Conversation saved")
+
+            # Refresh table to sync UI with state (critical for AI tool changes)
+            # Tools may have created/edited/deleted tasks - must update UI
+            debug_log.debug("[STEP 12] Refreshing table to sync UI with state...")
+            self.call_from_thread(self.refresh_table)
+            debug_log.info("[STEP 12] Table refreshed - UI now synced with state")
 
             # Show completion notification
             self.call_from_thread(self.notify, "AI response complete")
@@ -1130,10 +1235,28 @@ Ctrl+Shift+C - Clear AI q - Quit
             error_message = self.state.add_ai_message("assistant", f"Error: {str(e)}")
             self.call_from_thread(ai_panel.add_message, error_message)
 
+    def _handle_signal(self, signum: int) -> None:
+        """
+        Handle termination signals (SIGINT, SIGTERM) gracefully
+
+        Called when user presses Ctrl+C or when process receives termination signal.
+        Ensures tasks and conversation are saved before exit.
+
+        Args:
+            signum: Signal number (SIGINT=2, SIGTERM=15)
+        """
+        signal_name = signal.Signals(signum).name
+        debug_log.info(f"[SIGNAL] Received {signal_name} (signal {signum}) - saving and exiting...")
+
+        # Use action_quit to save and exit cleanly
+        self.action_quit()
+
     def action_quit(self) -> None:
         """Save and quit"""
+        debug_log.info("[APP] action_quit() called - saving tasks and conversation...")
         self.state.save_to_file(self.tasks_file, self.console)
         self.state.save_conversation_to_file(str(DEFAULT_AI_CONVERSATION_FILE), self.console)
+        debug_log.info("[APP] Save complete - exiting application")
         self.exit()
 
 

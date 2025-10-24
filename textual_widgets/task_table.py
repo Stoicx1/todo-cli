@@ -142,6 +142,6 @@ class TaskTable(DataTable):
         # Find row index for this task ID
         for row_idx, tid in self._row_to_task_id.items():
             if tid == task_id:
-                self.cursor_row = row_idx
+                self.move_cursor(row=row_idx)
                 return True
         return False

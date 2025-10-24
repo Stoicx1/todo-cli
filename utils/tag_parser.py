@@ -99,7 +99,7 @@ def parse_tags(
     normalized = []
     seen = set()
 
-    for tag in raw_tags:
+    for idx, tag in enumerate(raw_tags):
         tag = normalize_tag(tag)
 
         if not tag:
@@ -127,7 +127,7 @@ def parse_tags(
         # Respect max limit
         if len(normalized) >= max_tags:
             # Warn about dropped tags
-            remaining = len([t for t in raw_tags[raw_tags.index(tag)+1:] if normalize_tag(t)])
+            remaining = len([t for t in raw_tags[idx+1:] if normalize_tag(t)])
             if remaining > 0 and warn_callback:
                 warn_callback(
                     f"[yellow]⚠ Tag limit reached ({max_tags} max), "

@@ -149,3 +149,36 @@ DEBUG_PARSER = False  # When True, prints parsed command parts in UI
 IS_WINDOWS = sys.platform.startswith('win')
 IS_MACOS = sys.platform == 'darwin'
 IS_LINUX = sys.platform.startswith('linux')
+
+
+# ============================================================================
+# AI ASSISTANT CONFIGURATION (LangChain Agent System)
+# ============================================================================
+
+@dataclass
+class AIConfig:
+    """AI Assistant & LangChain Agent Settings"""
+
+    # OpenAI Model Settings
+    MODEL: str = "gpt-4o-mini"
+    TEMPERATURE: float = 0.7
+    MAX_TOKENS: int = 1500
+    STREAMING: bool = True
+
+    # Conversation Memory Settings
+    CHAT_HISTORY_FILE: Path = DEFAULT_AI_CONVERSATION_FILE
+    MEMORY_MAX_TOKENS: int = 2000  # Keep ~2000 tokens in memory
+    MEMORY_MAX_MESSAGES: int = 50  # Max messages before forced summarization
+
+    # Agent Settings
+    AGENT_VERBOSE: bool = False  # Set True to see reasoning steps (debugging)
+    AGENT_MAX_ITERATIONS: int = 5  # Prevent infinite loops
+    AGENT_HANDLE_PARSING_ERRORS: bool = True  # Graceful error recovery
+
+    # Tool Execution Settings
+    TOOL_SEARCH_LIMIT: int = 10  # Max tasks returned by search_tasks tool
+    TOOL_REQUIRE_CONFIRMATION: bool = False  # Set True for destructive operations
+
+
+# Global AI config instance
+ai = AIConfig()

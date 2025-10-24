@@ -10,14 +10,50 @@ from openai import OpenAI
 import os
 import json
 
+# New LangChain agent imports
+from core.ai_agent import TaskAssistantAgent
+from utils.conversation_memory import ConversationMemoryManager
+from config import ai as ai_config
+from debug_logger import debug_log
+
 
 class Assistant:
     def __init__(self, model="gpt-4o-mini", state=None):
         load_dotenv()
+        self.state = state
+        self.console = Console()
+
+        # Legacy OpenAI client (kept for backward compatibility)
         api_key = os.getenv("OPENAI_API_KEY")
         self.client = OpenAI(api_key=api_key)
         self.model = model
-        self.console = Console()
+
+        # New LangChain agent system
+        debug_log.info("[ASSISTANT] Attempting to initialize LangChain agent...")
+        try:
+            # Initialize conversation memory
+            self.memory = ConversationMemoryManager(
+                memory_file=ai_config.CHAT_HISTORY_FILE,
+                max_token_limit=ai_config.MEMORY_MAX_TOKENS
+            )
+            debug_log.debug("[ASSISTANT] ConversationMemoryManager initialized")
+
+            # Initialize agent with tools
+            self.agent = TaskAssistantAgent(
+                state=state,
+                memory=self.memory,
+                model=model
+            )
+            debug_log.info(f"[ASSISTANT] Agent initialized successfully - model={model}")
+
+            self.agent_enabled = True
+        except Exception as e:
+            # Fallback to legacy mode if agent initialization fails
+            debug_log.error(f"[ASSISTANT] Agent initialization failed, falling back to legacy mode: {str(e)}", exception=e)
+            print(f"Warning: Agent initialization failed, using legacy mode: {e}")
+            self.agent_enabled = False
+            self.agent = None
+            self.memory = None
 
     def format_tasks(self, tasks):
         return "\n".join(
@@ -27,7 +63,40 @@ class Assistant:
             for t in tasks
         )
 
-    def ask(self, tasks, user_prompt):
+    def ask(self, user_prompt, streaming_callback=None):
+        """
+        Ask AI a question (new signature with agent system).
+
+        Args:
+            user_prompt: User's question or request
+            streaming_callback: Optional callback for streaming responses
+
+        Returns:
+            AI response text
+
+        Note: If agent is enabled, uses LangChain agent with tools.
+              Otherwise, falls back to legacy OpenAI API.
+        """
+        debug_log.debug(f"[ASSISTANT] ask() called - agent_enabled={self.agent_enabled}, prompt: '{user_prompt[:50]}'")
+
+        if self.agent_enabled and self.agent:
+            # Use new agent system
+            debug_log.info("[ASSISTANT] Routing to LangChain agent")
+            try:
+                result = self.agent.ask(user_prompt, streaming_callback=streaming_callback)
+                debug_log.debug(f"[ASSISTANT] Agent returned response - {len(result)} chars")
+                return result
+            except Exception as e:
+                # Fallback to legacy on error
+                debug_log.error(f"[ASSISTANT] Agent failed, falling back to legacy: {str(e)}", exception=e)
+                print(f"Agent error, falling back to legacy: {e}")
+                return self._ask_legacy(self.state.tasks, user_prompt)
+        else:
+            # Use legacy method
+            debug_log.info("[ASSISTANT] Routing to legacy OpenAI API")
+            return self._ask_legacy(self.state.tasks, user_prompt)
+
+    def _ask_legacy(self, tasks, user_prompt):
         formatted_tasks = self.format_tasks(tasks)
         full_prompt = f"""
 Here is my current task list:

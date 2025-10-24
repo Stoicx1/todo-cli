@@ -18,7 +18,12 @@
       "Bash(then grep -q \"OPENAI_API_KEY\" .env)",
       "Bash(else echo \"✗ .env file missing\")",
       "Bash(fi)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(pip install:*)",
+      "Read(//c/Users/Pavol Hvolka/**)",
+      "WebFetch(domain:textual.textualize.io)",
+      "Bash(dir /b tasks.json*)",
+      "Bash(if exist \"D:\\MyProjects\\todo-cli\\tasks.json.backup\" type \"D:\\MyProjects\\todo-cli\\tasks.json.backup\")"
     ],
     "deny": [],
     "ask": []
