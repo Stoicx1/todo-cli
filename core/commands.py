@@ -745,7 +745,7 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
 
         # Priority color and label
         priority_labels = {1: "HIGH", 2: "MED", 3: "LOW"}
-        priority_label = priority_labels.get(task.priority, "???")
+        priority_label = priority_labels.get(task.priority, "?")
         priority_colors = {1: "red", 2: "yellow", 3: "green"}
         priority_color = priority_colors.get(task.priority, "white")
 

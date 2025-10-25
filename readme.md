@@ -486,7 +486,7 @@ This is a personal project, but suggestions and improvements are welcome!
 - `docs/README.md` - Documentation structure and organization 🆕 
 
 ## Age Column and Dates (Oct 2025)
-- Tables show: ID | Age | Priority | Tags | Task
+- Tables show: ID | Age | Prio | Tags | Task
 - Age is derived from created_at (compact: 5m, 3h, 2d, 1y)
 - Sort by age: sort age [asc|desc] (asc=youngest first)
 - Filter by age: ilter age>=3d, ilter age<=2h, ilter age>=30m`n- Detail views show Created, Updated, and Completed (relative)

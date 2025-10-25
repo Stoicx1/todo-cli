@@ -14,7 +14,7 @@ from utils.time import humanize_age
 class TaskTable(DataTable):
     """DataTable that renders tasks with clean, cross-platform glyphs.
 
-    Columns: ID | Age | Priority | Tags | Task
+    Columns: ID | Age | Prio | Tags | Task
     """
 
     def __init__(self, **kwargs):
@@ -26,9 +26,9 @@ class TaskTable(DataTable):
 
     def add_columns_if_needed(self) -> None:
         if len(self.columns) == 0:
-            self.add_column("ID", width=6, key="id")
-            self.add_column("Age", width=7, key="age")
-            self.add_column("Priority", width=12, key="priority")
+            self.add_column("ID", width=4, key="id")
+            self.add_column("Age", width=4, key="age")
+            self.add_column("Prio", width=4, key="priority")
             self.add_column("Tags", width=20, key="tags")
             self.add_column("Task", key="task")
 
@@ -93,4 +93,3 @@ class TaskTable(DataTable):
                 self.move_cursor(row=row_idx)
                 return True
         return False
-

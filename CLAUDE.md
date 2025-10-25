@@ -101,7 +101,7 @@ The application supports dual UI modes (Textual and Rich):
   - Comprehensive error handling (NEW - 2025-10-23)
 - **textual_widgets/task_table.py**: DataTable with color-coded tasks
   - Fixed row mapping for detail view (FIXED - 2025-10-23)
-  - NEW: Age column (ID | Age | Priority | Tags | Task) (2025-10-24)
+  - NEW: Age column (ID | Age | Prio | Tags | Task) (2025-10-24)
   - Clean, cross-platform glyphs for better compatibility (2025-10-24)
 - **textual_widgets/command_input.py**: Command input with autocomplete
   - Event bubbling prevention (FIXED - 2025-10-23)

@@ -6,6 +6,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.box import ROUNDED
 from core.state import AppState
+from utils.time import humanize_age
 from config import USE_UNICODE
 from datetime import datetime
 
@@ -182,8 +183,8 @@ def render_dashboard(console: Console, state: AppState, use_prompt_toolkit: bool
             show_edge=False
         )
         table.add_column("ID", justify="center", no_wrap=True, style="dim", width=4)
-        table.add_column("Age", justify="center", no_wrap=True, width=8)
-        table.add_column("Priority", justify="center", no_wrap=True, width=10)
+        table.add_column("Age", justify="center", no_wrap=True, width=4)
+        table.add_column("Prio", justify="center", no_wrap=True, width=6)
         table.add_column("Tags", justify="left", style="cyan", width=20)
         table.add_column("Task", justify="left")
 
@@ -201,11 +202,12 @@ def render_dashboard(console: Console, state: AppState, use_prompt_toolkit: bool
 
             status_color = "green" if task.done else "red"
             priority_labels = {1: "HIGH", 2: "MED", 3: "LOW"}
-            priority_label = priority_labels.get(task.priority, "???")
+            priority_label = priority_labels.get(task.priority, "?")
             task_display = f"[{status_color}]{status_icon}[/{status_color}] {task.name}"
-            priority_label = priority_labels.get(task.priority, "???")
+            priority_label = priority_labels.get(task.priority, "?")
             tags_display = task.get_tags_display()
             priority_display = f"{priority_icon} {priority_label}"
+            age_display = humanize_age(getattr(task, "created_at", ""))
             table.add_row(
                 str(task.id),
                 age_display,
@@ -225,10 +227,10 @@ def render_dashboard(console: Console, state: AppState, use_prompt_toolkit: bool
         c.print(table)
 
         # Render status panel
-        _render_info_panel(c, state)
+        render_info_lines(c, state)
 
         # Render AI panel if active
-        _render_ai_panel_inline(c, state)
+        _render_ai_panel(c, state)
 
         # Render messages
         if state.messages:
