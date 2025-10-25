@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+﻿from dataclasses import dataclass, field
 from typing import List
 from datetime import datetime
 
@@ -15,6 +15,7 @@ class Task:
     tags: List[str] = field(default_factory=list)  # New: up to 3 tags
     created_at: str = ""  # ISO timestamp
     completed_at: str = ""  # ISO timestamp when marked done
+    updated_at: str = ""  # ISO timestamp when last modified
 
     def __post_init__(self):
         """
@@ -38,6 +39,9 @@ class Task:
         # Set created_at if not set
         if not self.created_at:
             self.created_at = datetime.now().isoformat()
+            # Initialize updated_at if missing
+            if not self.updated_at:
+                self.updated_at = self.created_at
 
     def get_tags_display(self) -> str:
         """Get comma-separated tags for display"""

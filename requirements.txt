@@ -1,9 +1,22 @@
 # Core UI Libraries
 rich==14.0.0
 prompt-toolkit==3.0.50
+questionary>=2.1.0,<3.0.0
+
+# Textual TUI Framework (NEW - Modern reactive TUI)
+textual>=1.0.0,<2.0.0
+textual-dev>=1.7.0  # Development tools and console
 
 # OpenAI Integration (Optional)
 openai>=1.70.0,<2.0.0
 
 # Environment Variables
 python-dotenv>=1.0.0,<2.0.0
+
+# File Safety
+portalocker>=2.8.2
+
+# LangChain AI Agent System (Phase 3 - AI Enhancement)
+langchain>=0.1.0
+langchain-openai>=0.0.5
+langchain-community>=0.0.20

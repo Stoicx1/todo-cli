@@ -87,14 +87,14 @@ The UI has **two status lines** + one prompt line:
 
 #### Line 1: **Navigation & View Context**
 ```
-📄 Page 1/2 | 👁️ 20/29 showing | 🎨 compact | ↕️ priority
+📄 Page 1/2 | 👁️ 20/29 showing | 🎨 compact | ⬆️ priority (asc)
 ```
 
 **What it shows:**
 - 📄 **Page**: Current page / total pages
 - 👁️ **Showing**: Tasks visible / total tasks
 - 🎨 **View**: View mode (compact=20/page, detail=10/page)
-- ↕️ **Sort**: Current sort method (priority/id/name)
+- ↕️ **Sort**: Current sort method and order (e.g., priority (ASC|DESC))
 
 #### Line 2: **Task Statistics**
 ```
@@ -156,9 +156,10 @@ Where you type commands - INTERACTIVE
 | `filter undone` | `filter undone` | Show only incomplete tasks |
 | `filter none` | `filter none` | Clear all filters (show all) |
 | `filter tag:<name>` | `filter tag:psdc` | Show only tasks with tag "psdc" |
-| `sort priority` | `sort priority` | Sort by priority (1=high, 3=low) |
-| `sort id` | `sort id` | Sort by task ID (oldest first) |
-| `sort name` | `sort name` | Sort alphabetically by task name |
+| `sort priority [asc|desc]` | `sort priority desc` | Sort by priority (1→3 asc, 3→1 desc) |
+| `sort id [asc|desc]` | `sort id asc` | Sort by task ID (asc = oldest first) |
+| `sort name [asc|desc]` | `sort name desc` | Sort alphabetically (asc = A→Z) |
+| `sort order [asc|desc]` | `sort order asc` | Set sort order without changing field |
 | `tags` | `tags` | List all tags with completion stats |
 
 ### ℹ️ Information & Analytics
@@ -299,8 +300,8 @@ insights
 # 2. Filter to incomplete
 filter undone
 
-# 3. Sort by priority
-sort priority
+# 3. Sort by priority (descending)
+sort priority desc
 
 # 4. Review suggested tasks
 suggest
@@ -332,6 +333,15 @@ The app remembers your recent commands. Use:
 - `↓` arrow to go forward
 
 History is saved in `~/.todo_cli_history`
+
+### Preferences Persistence
+
+Your view and sorting preferences persist between runs.
+
+- Stored at: `~/.todo_cli_settings.json`
+- Includes: `sort`, `sort_order`, `view_mode`, and `filter`
+- Loaded on startup, saved on save/exit
+- Safe to delete if you want to reset preferences
 
 ### Fuzzy Search
 
@@ -435,3 +445,8 @@ All commands now provide helpful error messages when used incorrectly:
 ---
 
 **Need help?** Type `help` in the app or `/` to browse all available commands!
+
+## Age Support (Oct 2025)
+- Column layout: ID | Age | Prio | Tags | Task
+- Sort: sort age [asc|desc] (asc=youngest first)
+- Filter: ilter age>=3d, ilter age<=2h, ilter age>=30m`n- Age is derived from created_at and cannot be set directly

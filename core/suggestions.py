@@ -3,11 +3,12 @@ Local AI Suggestions - No OpenAI API required
 Provides intelligent task insights and suggestions using local analysis
 """
 
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 from collections import Counter
 from datetime import datetime
 from models.task import Task
 from core.state import AppState
+from config import analysis, USE_UNICODE
 
 
 class LocalSuggestions:
@@ -16,7 +17,7 @@ class LocalSuggestions:
     """
 
     @staticmethod
-    def analyze_tasks(state: AppState) -> Dict[str, any]:
+    def analyze_tasks(state: AppState) -> Dict[str, Any]:
         """
         Analyze task list and provide statistics
         Returns comprehensive task analysis
@@ -39,8 +40,12 @@ class LocalSuggestions:
         # Group by priority
         by_priority = Counter(t.priority for t in state.tasks if not t.done)
 
-        # Group by tag
-        by_tag = Counter(t.tag for t in state.tasks if t.tag and not t.done)
+        # Group by tag (use task.tags to support multi-tag)
+        by_tag = Counter()
+        for t in state.tasks:
+            if not t.done:
+                for tag in t.tags:  # Count all tags, not just first
+                    by_tag[tag] += 1
 
         completion_rate = (completed / total * 100) if total > 0 else 0
 
@@ -63,44 +68,50 @@ class LocalSuggestions:
         Returns list of actionable suggestions
         """
         if not state.tasks:
-            return ["💡 Start by adding your first task with '/add' or 'add'"]
+            tip = "💡 Start by adding your first task with '/add' or 'add'" if USE_UNICODE else "Tip: Start by adding your first task with '/add' or 'add'"
+            return [tip]
 
         suggestions = []
-        analysis = LocalSuggestions.analyze_tasks(state)
+        task_analysis = LocalSuggestions.analyze_tasks(state)
 
-        # Completion rate suggestions
-        if analysis['completion_rate'] < 20:
-            suggestions.append("🎯 Low completion rate detected. Focus on completing a few high-priority tasks.")
-        elif analysis['completion_rate'] > 80:
-            suggestions.append("🎉 Great progress! You've completed most of your tasks.")
+        # Completion rate suggestions (using config thresholds)
+        if task_analysis['completion_rate'] < analysis.LOW_COMPLETION_RATE_THRESHOLD:
+            suggestions.append("🎯 Low completion rate detected. Focus on completing a few high-priority tasks." if USE_UNICODE else "Low completion rate detected. Focus on completing a few high-priority tasks.")
+        elif task_analysis['completion_rate'] > analysis.HIGH_COMPLETION_RATE_THRESHOLD:
+            suggestions.append("🎉 Great progress! You've completed most of your tasks." if USE_UNICODE else "Great progress! You've completed most of your tasks.")
 
-        # Priority-based suggestions
-        if analysis['high_priority_count'] > 5:
-            suggestions.append(f"⚠️ You have {analysis['high_priority_count']} high-priority tasks. Consider focusing on these first.")
+        # Priority-based suggestions (using config threshold)
+        if task_analysis['high_priority_count'] > analysis.HIGH_PRIORITY_WARNING_THRESHOLD:
+            warning = "⚠️" if USE_UNICODE else "!"
+            suggestions.append(f"{warning} You have {task_analysis['high_priority_count']} high-priority tasks. Consider focusing on these first.")
 
-        if analysis['high_priority_count'] == 0 and analysis['incomplete'] > 0:
-            suggestions.append("✨ No high-priority tasks! Start with medium priority items.")
+        if task_analysis['high_priority_count'] == 0 and task_analysis['incomplete'] > 0:
+            suggestions.append("✨ No high-priority tasks! Start with medium priority items." if USE_UNICODE else "No high-priority tasks. Start with medium priority items.")
 
         # Tag-based suggestions
-        if analysis['by_tag']:
-            most_common_tag = max(analysis['by_tag'].items(), key=lambda x: x[1])
-            suggestions.append(f"📊 Most active tag: '{most_common_tag[0]}' ({most_common_tag[1]} tasks)")
+        if task_analysis['by_tag']:
+            most_common_tag = max(task_analysis['by_tag'].items(), key=lambda x: x[1])
+            emoji = "📊" if USE_UNICODE else "Stats:"
+            suggestions.append(f"{emoji} Most active tag: '{most_common_tag[0]}' ({most_common_tag[1]} tasks)")
 
-        # General productivity suggestions
-        if analysis['incomplete'] > 20:
-            suggestions.append("🗂️ Large task list detected. Consider breaking down or archiving completed tasks.")
+        # General productivity suggestions (using config threshold)
+        if task_analysis['incomplete'] > analysis.LARGE_TASK_LIST_THRESHOLD:
+            suggestions.append("🗂️ Large task list detected. Consider breaking down or archiving completed tasks." if USE_UNICODE else "Large task list detected. Consider breaking down or archiving completed tasks.")
 
         if not suggestions:
-            suggestions.append("👍 Everything looks good! Keep up the great work.")
+            suggestions.append("👍 Everything looks good! Keep up the great work." if USE_UNICODE else "Everything looks good! Keep up the great work.")
 
         return suggestions
 
     @staticmethod
-    def get_next_recommended_tasks(state: AppState, limit: int = 3) -> List[Task]:
+    def get_next_recommended_tasks(state: AppState, limit: int = None) -> List[Task]:
         """
         Recommend which tasks to work on next
         Based on priority and other factors
         """
+        if limit is None:
+            limit = analysis.RECOMMENDED_TASKS_COUNT
+
         incomplete = [t for t in state.tasks if not t.done]
 
         if not incomplete:
@@ -128,41 +139,42 @@ class LocalSuggestions:
         if total_incomplete == 0:
             return "No incomplete tasks"
 
-        high_bar = '█' * (high * 10 // max(total_incomplete, 1))
-        medium_bar = '█' * (medium * 10 // max(total_incomplete, 1))
-        low_bar = '█' * (low * 10 // max(total_incomplete, 1))
+        block = '█' if USE_UNICODE else '#'
+        high_bar = block * (high * 10 // max(total_incomplete, 1))
+        medium_bar = block * (medium * 10 // max(total_incomplete, 1))
+        low_bar = block * (low * 10 // max(total_incomplete, 1))
+
+        high_label = "🔴 High" if USE_UNICODE else "HIGH"
+        med_label = "🟡 Medium" if USE_UNICODE else "MEDIUM"
+        low_label = "🟢 Low" if USE_UNICODE else "LOW"
 
         return f"""
 Priority Distribution (Incomplete Tasks):
-  🔴 High   [{high:2d}]: {high_bar}
-  🟡 Medium [{medium:2d}]: {medium_bar}
-  🟢 Low    [{low:2d}]: {low_bar}
+  {high_label:10s} [{high:2d}]: {high_bar}
+  {med_label:10s} [{medium:2d}]: {medium_bar}
+  {low_label:10s} [{low:2d}]: {low_bar}
 """
 
     @staticmethod
     def get_tag_summary(state: AppState) -> str:
         """
         Get summary of tasks by tag
+        Uses O(1) tag index for performance
         """
         if not state.tasks:
             return "No tasks available"
 
-        tags = {}
-        for task in state.tasks:
-            if task.tag:
-                if task.tag not in tags:
-                    tags[task.tag] = {'total': 0, 'done': 0}
-                tags[task.tag]['total'] += 1
-                if task.done:
-                    tags[task.tag]['done'] += 1
+        # Use O(1) tag statistics instead of O(n) iteration
+        tag_stats = state.get_all_tags_with_stats()
 
-        if not tags:
+        if not tag_stats:
             return "No tags found"
 
         lines = ["\nTag Summary:"]
-        for tag, counts in sorted(tags.items()):
-            progress = counts['done'] / counts['total'] * 100 if counts['total'] > 0 else 0
-            lines.append(f"  🏷️ {tag:15s} → {counts['done']}/{counts['total']} ({progress:.0f}%)")
+        for tag in sorted(tag_stats.keys()):
+            stats = tag_stats[tag]
+            progress = stats['done'] / stats['total'] * 100 if stats['total'] > 0 else 0
+            lines.append(f"  🏷️ {tag:15s} → {stats['done']}/{stats['total']} ({progress:.0f}%)")
 
         return '\n'.join(lines)
 
@@ -200,11 +212,13 @@ Priority Distribution (Incomplete Tasks):
         analysis = LocalSuggestions.analyze_tasks(state)
 
         if not state.tasks:
-            return "📊 No tasks to analyze. Add some tasks to get started!"
+            return "📊 No tasks to analyze. Add some tasks to get started!" if USE_UNICODE else "No tasks to analyze. Add some tasks to get started!"
 
+        title = "📊 Task Insights" if USE_UNICODE else "Task Insights"
+        line_char = "─" if USE_UNICODE else "-"
         lines = [
-            "📊 Task Insights",
-            "─" * 40,
+            title,
+            line_char * 40,
             f"Total Tasks:     {analysis['total']}",
             f"Completed:       {analysis['completed']} ({analysis['completion_rate']:.1f}%)",
             f"Incomplete:      {analysis['incomplete']}",
@@ -217,7 +231,7 @@ Priority Distribution (Incomplete Tasks):
             lines.append(LocalSuggestions.get_tag_summary(state))
 
         # Add smart suggestions
-        lines.append("\n💡 Smart Suggestions:")
+        lines.append("\n💡 Smart Suggestions:" if USE_UNICODE else "\nSuggestions:")
         for suggestion in LocalSuggestions.get_smart_suggestions(state):
             lines.append(f"  {suggestion}")
 
@@ -226,8 +240,12 @@ Priority Distribution (Incomplete Tasks):
         if next_tasks:
             lines.append("\n⚡ Recommended Next Tasks:")
             for i, task in enumerate(next_tasks, 1):
-                priority_icon = "🔴" if task.priority == 1 else "🟡" if task.priority == 2 else "🟢"
-                lines.append(f"  {i}. {priority_icon} [{task.id}] {task.name[:50]}")
+                if USE_UNICODE:
+                    priority_icon = "🔴" if task.priority == 1 else "🟡" if task.priority == 2 else "🟢"
+                    lines.append(f"  {i}. {priority_icon} [{task.id}] {task.name[:50]}")
+                else:
+                    pr_label = "HIGH" if task.priority == 1 else "MED" if task.priority == 2 else "LOW"
+                    lines.append(f"  {i}. {pr_label} [{task.id}] {task.name[:50]}")
 
         return '\n'.join(lines)
 
@@ -237,7 +255,7 @@ Priority Distribution (Incomplete Tasks):
         Quick one-line stats for status bar
         """
         analysis = LocalSuggestions.analyze_tasks(state)
-        return (f"📊 {analysis['total']} tasks | "
-                f"✅ {analysis['completed']} done | "
-                f"⚠️ {analysis['high_priority_count']} high priority | "
-                f"{analysis['completion_rate']:.0f}% complete")
+        return ((f"📊 {analysis['total']} tasks | " if USE_UNICODE else f"Tasks: {analysis['total']} | ")
+                + (f"✅ {analysis['completed']} done | " if USE_UNICODE else f"Done: {analysis['completed']} | ")
+                + (f"⚠️ {analysis['high_priority_count']} high priority | " if USE_UNICODE else f"High: {analysis['high_priority_count']} | ")
+                + f"{analysis['completion_rate']:.0f}% complete")

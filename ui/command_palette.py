@@ -245,7 +245,7 @@ COMMANDS = [
     CommandDefinition(
         name="sort priority",
         icon="⚡",
-        description="Sort by priority (ascending)",
+        description="Sort by priority (current order)",
         category="Filters & Sort",
         usage="sort priority",
         requires_args=False
@@ -253,7 +253,7 @@ COMMANDS = [
     CommandDefinition(
         name="sort id",
         icon="🔢",
-        description="Sort by task ID",
+        description="Sort by task ID (current order)",
         category="Filters & Sort",
         usage="sort id",
         requires_args=False
@@ -261,9 +261,74 @@ COMMANDS = [
     CommandDefinition(
         name="sort name",
         icon="🔤",
-        description="Sort alphabetically by name",
+        description="Sort alphabetically by name (current order)",
         category="Filters & Sort",
         usage="sort name",
+        requires_args=False
+    ),
+    # New explicit order variants
+    CommandDefinition(
+        name="sort priority asc",
+        icon="⬆️",
+        description="Sort by priority (ascending)",
+        category="Filters & Sort",
+        usage="sort priority asc",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="sort priority desc",
+        icon="⬇️",
+        description="Sort by priority (descending)",
+        category="Filters & Sort",
+        usage="sort priority desc",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="sort id asc",
+        icon="⬆️",
+        description="Sort by ID (ascending)",
+        category="Filters & Sort",
+        usage="sort id asc",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="sort id desc",
+        icon="⬇️",
+        description="Sort by ID (descending)",
+        category="Filters & Sort",
+        usage="sort id desc",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="sort name asc",
+        icon="⬆️",
+        description="Sort by name (A→Z)",
+        category="Filters & Sort",
+        usage="sort name asc",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="sort name desc",
+        icon="⬇️",
+        description="Sort by name (Z→A)",
+        category="Filters & Sort",
+        usage="sort name desc",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="sort order asc",
+        icon="⬆️",
+        description="Set sort order ascending",
+        category="Filters & Sort",
+        usage="sort order asc",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="sort order desc",
+        icon="⬇️",
+        description="Set sort order descending",
+        category="Filters & Sort",
+        usage="sort order desc",
         requires_args=False
     ),
 
@@ -309,6 +374,14 @@ COMMANDS = [
         category="AI Assistant",
         usage="? <your question>",
         requires_args=True
+    ),
+    CommandDefinition(
+        name="clearai",
+        icon="🗑️",
+        description="Clear AI answer panel",
+        category="AI Assistant",
+        usage="clearai",
+        requires_args=False
     ),
 
     # System
@@ -403,6 +476,55 @@ class CommandCompleter(Completer):
                         display_meta=display_meta
                     )
 
+        # Context-aware completions for 'sort' command
+        elif word.startswith('sort'):
+            parts = word.strip().split()
+            # Base options when typing 'sort' or 'sort '
+            if len(parts) == 1 or (len(parts) == 2 and word.endswith(' ')):
+                options = [
+                    ('sort priority', 'Sort by priority'),
+                    ('sort id', 'Sort by task ID'),
+                    ('sort name', 'Sort by name'),
+                    ('sort order', 'Set sort order'),
+                    ('sort toggle', 'Toggle sort order'),
+                ]
+                for text, meta in options:
+                    yield Completion(
+                        text=text,
+                        start_position=-len(word),
+                        display=f"> {text}",
+                        display_meta=f"🔧 {meta}"
+                    )
+                return
+
+            # After field → suggest order
+            if len(parts) >= 2:
+                field = parts[1]
+                if field in ('priority', 'id', 'name'):
+                    order_options = [('asc', 'Ascending'), ('desc', 'Descending')]
+                    if field == 'priority':
+                        order_options.extend([('high', 'Alias for asc'), ('low', 'Alias for desc')])
+                    for opt, meta in order_options:
+                        suggestion = f"sort {field} {opt}"
+                        yield Completion(
+                            text=suggestion,
+                            start_position=-len(word),
+                            display=f"> {suggestion}",
+                            display_meta=f"🔧 {meta}"
+                        )
+                    return
+
+                if field == 'order':
+                    for opt, meta in [('asc', 'Ascending'), ('desc', 'Descending')]:
+                        suggestion = f"sort order {opt}"
+                        yield Completion(
+                            text=suggestion,
+                            start_position=-len(word),
+                            display=f"> {suggestion}",
+                            display_meta=f"🔧 {meta}"
+                        )
+                    return
+
         # Also provide regular command completion without '/'
         elif word:
             search_text = word.lower()
@@ -440,5 +562,6 @@ def get_command_by_name(name: str) -> CommandDefinition:
 
 
 def get_available_tags(state: AppState) -> List[str]:
-    """Get list of all tags currently in use"""
-    return sorted(list({t.tag for t in state.tasks if t.tag}))
+    """Get list of all tags currently in use (leverages tag index)."""
+    # Use O(1) tag index via state API to include all tags (not just legacy first tag)
+    return sorted(list(state.get_all_tags_with_stats().keys()))

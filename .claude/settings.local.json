@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(timeout 3 python:*)",
+      "Bash(py main.py:*)",
+      "Bash(del test_panel.py)",
+      "WebSearch",
+      "Bash(git log:*)",
+      "Bash(timeout 5 python:*)",
+      "Bash(rg:*)",
+      "Bash(find:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)",
+      "Bash(git commit:*)",
+      "Bash(test:*)",
+      "Bash(if [ -f .env ])",
+      "Bash(then grep -q \"OPENAI_API_KEY\" .env)",
+      "Bash(else echo \"✗ .env file missing\")",
+      "Bash(fi)",
+      "Bash(timeout:*)",
+      "Bash(pip install:*)",
+      "Read(//c/Users/Pavol Hvolka/**)",
+      "WebFetch(domain:textual.textualize.io)",
+      "Bash(dir /b tasks.json*)",
+      "Bash(if exist \"D:\\MyProjects\\todo-cli\\tasks.json.backup\" type \"D:\\MyProjects\\todo-cli\\tasks.json.backup\")",
+      "Bash(cat:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
