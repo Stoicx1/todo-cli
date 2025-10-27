@@ -300,7 +300,26 @@ python main.py --version    # CLI
    - Update `VERSION` file
    - Update `CHANGELOG.md` (move "Unreleased" → new version with date)
    - Commit: `chore(release): vX.Y.Z`
-   - Suggest tag: `git tag -a vX.Y.Z -m "vX.Y.Z"`
+   - Create tag: `git tag -a vX.Y.Z -m "vX.Y.Z"` (MUST create before pushing!)
+   - Push: `git push origin <branch>` then `git push origin vX.Y.Z`
+
+**Tag Creation Order (CRITICAL):**
+```bash
+# 1. Create tag locally FIRST
+git tag -a v0.2.0 -m "v0.2.0"
+
+# 2. Push commit
+git push origin <branch>
+
+# 3. Push tag
+git push origin v0.2.0
+```
+
+**Common Error:** Trying to push a tag that doesn't exist locally:
+```
+git push origin v0.2.0
+error: src refspec v0.2.0 does not match any
+```
 
 **Conventional Commit mapping:**
 - `feat:` → MINOR
@@ -309,7 +328,7 @@ python main.py --version    # CLI
 - `docs:`, `test:`, `chore:` → NO BUMP (unless code changed)
 - `!` or `BREAKING CHANGE:` → MAJOR
 
-See: `VERSION.md` for full policy
+See: `VERSION.md` for full policy and detailed examples
 
 ## Documentation Structure
 

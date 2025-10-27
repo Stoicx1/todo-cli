@@ -64,7 +64,17 @@ Pre-releases:
   - `git add VERSION CHANGELOG.md`
   - `git commit -m "chore(release): vX.Y.Z"`
 - Create annotated tag: `git tag -a vX.Y.Z -m "vX.Y.Z"`
-- Push: `git push && git push --tags`
+- Push commit and tag:
+  - `git push origin <branch-name>`          # Push commit first
+  - `git push origin vX.Y.Z`                 # Then push the tag
+  - OR: `git push origin <branch> --tags`    # Push commit + all tags together
+
+**IMPORTANT:** You must create the tag locally BEFORE pushing it. The sequence is:
+1. Create tag: `git tag -a vX.Y.Z -m "vX.Y.Z"`
+2. Push commit: `git push origin <branch>`
+3. Push tag: `git push origin vX.Y.Z`
+
+If you try to push a tag that doesn't exist, you'll get: `error: src refspec vX.Y.Z does not match any`
 
 ## Changelog Conventions
 - Keep `CHANGELOG.md` using “Keep a Changelog” style.
@@ -136,14 +146,17 @@ Choose one option and stick with it. This repo defaults to the simple `VERSION` 
 3. Update CHANGELOG.md: move Unreleased entries under `## [1.4.0] - 2025-10-26`.
 4. `git add VERSION CHANGELOG.md`
 5. `git commit -m "chore(release): v1.4.0"`
-6. `git tag -a v1.4.0 -m "v1.4.0"`
-7. `git push origin main && git push origin v1.4.0`
+6. `git tag -a v1.4.0 -m "v1.4.0"`  ← CREATE TAG FIRST
+7. `git push origin main`           ← PUSH COMMIT
+8. `git push origin v1.4.0`         ← PUSH TAG
 
 ## Example: Pre-release 2.0.0-rc.1
 1. `echo 2.0.0-rc.1 > VERSION`
 2. Update CHANGELOG.md with RC notes.
-3. Commit and tag `v2.0.0-rc.1`.
-4. Iterate rc.2/rc.3 as needed; final: set `VERSION` to `2.0.0`, tag `v2.0.0`.
+3. Commit: `git commit -m "chore(release): v2.0.0-rc.1"`
+4. Create tag: `git tag -a v2.0.0-rc.1 -m "v2.0.0-rc.1"`
+5. Push: `git push origin <branch> && git push origin v2.0.0-rc.1`
+6. Iterate rc.2/rc.3 as needed; final: set `VERSION` to `2.0.0`, tag `v2.0.0`.
 
 ---
 Notes:
