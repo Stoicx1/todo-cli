@@ -409,6 +409,95 @@ COMMANDS = [
         usage="exit",
         requires_args=False
     ),
+    # Notes & Modes
+    CommandDefinition(
+        name="mode tasks",
+        icon="📋",
+        description="Switch to tasks mode",
+        category="Notes",
+        usage="mode tasks",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="mode notes",
+        icon="📝",
+        description="Switch to notes mode",
+        category="Notes",
+        usage="mode notes",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="notes",
+        icon="🗂️",
+        description="List notes (notes <task_id>|<query>)",
+        category="Notes",
+        usage="notes [task_id|query]",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="notes clear",
+        icon="🧹",
+        description="Clear notes filters and show all",
+        category="Notes",
+        usage="notes clear",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="note new",
+        icon="➕",
+        description="Create a new note",
+        category="Notes",
+        usage="note new --title '...' [--task 1] [--tag x]",
+        requires_args=False
+    ),
+    CommandDefinition(
+        name="note edit",
+        icon="✏️",
+        description="Edit a note by id prefix",
+        category="Notes",
+        usage="note edit <note_id_prefix>",
+        requires_args=True
+    ),
+    CommandDefinition(
+        name="note show",
+        icon="🔍",
+        description="Show a note summary with excerpt",
+        category="Notes",
+        usage="note show <note_id_prefix>",
+        requires_args=True
+    ),
+    CommandDefinition(
+        name="note link",
+        icon="🔗",
+        description="Link a note to a task",
+        category="Notes",
+        usage="note link <note_id_prefix> <task_id>",
+        requires_args=True
+    ),
+    CommandDefinition(
+        name="note unlink",
+        icon="⛓️",
+        description="Unlink a note from a task",
+        category="Notes",
+        usage="note unlink <note_id_prefix> <task_id>",
+        requires_args=True
+    ),
+    CommandDefinition(
+        name="note delete",
+        icon="🗑️",
+        description="Delete note by id prefix (Textual: Delete; CLI: add --force for short prefixes)",
+        category="Notes",
+        usage="note delete <note_id_prefix> [--force]",
+        requires_args=True
+    ),
+    CommandDefinition(
+        name="note duplicate",
+        icon="📄",
+        description="Duplicate note (Textual: Ctrl+D)",
+        category="Notes",
+        usage="note duplicate <note_id_prefix> [--title '...'] [--task 12]",
+        requires_args=True
+    ),
 ]
 
 

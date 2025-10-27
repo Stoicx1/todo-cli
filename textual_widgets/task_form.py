@@ -110,7 +110,7 @@ class TaskForm(ModalScreen[dict | None]):
             existing_tags: List of existing tags for suggestions
         """
         super().__init__(**kwargs)
-        self._task = task
+        self._task_data = task
         self.existing_tags = existing_tags or []
         self.is_edit = task is not None
 
@@ -127,7 +127,7 @@ class TaskForm(ModalScreen[dict | None]):
                 yield Static("Name:", classes="label")
                 yield Input(
                     placeholder="Task name (required)",
-                    value=self._task.name if self._task else "",
+                    value=self._task_data.name if self._task_data else "",
                     id="name_input",
                     validators=[
                         Length(
@@ -142,7 +142,7 @@ class TaskForm(ModalScreen[dict | None]):
                 yield Static("Comment:", classes="label")
                 yield Input(
                     placeholder="Short comment (optional)",
-                    value=self._task.comment if self._task else "",
+                    value=self._task_data.comment if self._task_data else "",
                     id="comment_input",
                 )
             yield Static("Brief note or context", classes="hint")
@@ -152,7 +152,7 @@ class TaskForm(ModalScreen[dict | None]):
                 yield Static("Description:", classes="label")
                 yield Input(
                     placeholder="Detailed description (optional)",
-                    value=self._task.description if self._task else "",
+                    value=self._task_data.description if self._task_data else "",
                     id="description_input",
                 )
             yield Static("Full details and requirements", classes="hint")
@@ -160,7 +160,7 @@ class TaskForm(ModalScreen[dict | None]):
             # Priority (select dropdown)
             with Horizontal(classes="field-row"):
                 yield Static("Priority:", classes="label")
-                priority_value = str(self._task.priority) if self._task else "2"
+                priority_value = str(self._task_data.priority) if self._task_data else "2"
                 yield Select(
                     options=[
                         ("🔴 High (1)", "1"),
@@ -174,7 +174,7 @@ class TaskForm(ModalScreen[dict | None]):
             # Tags (comma-separated)
             with Horizontal(classes="field-row"):
                 yield Static("Tags:", classes="label")
-                tags_value = ", ".join(self._task.tags) if self._task else ""
+                tags_value = ", ".join(self._task_data.tags) if self._task_data else ""
                 yield Input(
                     placeholder="tag1, tag2, tag3 (max 3)",
                     value=tags_value,

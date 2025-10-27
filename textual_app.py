@@ -9,16 +9,20 @@ from enum import Enum
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Vertical, Horizontal
-from textual.widgets import Header, Footer, Static
+from textual.widgets import Header, Static
 from textual.reactive import reactive
 from textual import work
 
 from core.state import AppState
 from core.commands import handle_command
 from core.suggestions import LocalSuggestions
-from assistant import Assistant
 from textual_widgets.task_table import TaskTable
+from textual_widgets.note_table import NoteTable
+from textual_widgets.note_detail_modal import NoteDetailModal
+from textual_widgets.note_editor_modal import NoteEditorModal
+from textual_widgets.link_task_picker import LinkTaskPicker
 from textual_widgets.status_bar import StatusBar
+from textual_widgets.context_footer import ContextFooter
 from textual_widgets.command_input import CommandInput
 from textual_widgets.task_form import TaskForm
 from textual_widgets.confirm_dialog import ConfirmDialog
@@ -27,6 +31,7 @@ from textual_widgets.ai_input import AIInput
 from textual_widgets.task_detail_modal import TaskDetailModal
 from config import DEFAULT_TASKS_FILE, DEFAULT_AI_CONVERSATION_FILE
 from debug_logger import debug_log
+from utils.version import get_version
 
 
 class LayoutMode(Enum):
@@ -51,9 +56,10 @@ class TodoTextualApp(App):
     TITLE = "Todo CLI (Textual)"
     SUB_TITLE = "Modern Task Management"
 
-    # Disable text selection to prevent IndexError crash (Textual upstream bug)
-    # See: textual/selection.py:66 - list index out of range when selection coordinates invalid
-    ENABLE_SELECTION = False
+    # Enable mouse selection to allow copying text with the mouse.
+    # Note: earlier we disabled this to avoid an upstream bug; if issues arise,
+    # switch back to False and use Ctrl+Shift+Y (copy) instead.
+    ENABLE_SELECTION = True
 
     # CSS_PATH = "styles/main.tcss"  # Temporarily disabled - using inline CSS
 
@@ -83,7 +89,7 @@ class TodoTextualApp(App):
         text-style: bold;
     }
 
-    Footer {
+    Footer, ContextFooter {
         background: $primary;
         color: $text;
     }
@@ -108,12 +114,6 @@ class TodoTextualApp(App):
     DataTable > .datatable--cursor {
         background: $secondary;
         color: $text;
-    }
-
-    DataTable:focus > .datatable--cursor {
-        background: cyan 20%;
-        color: $text;
-        text-style: bold;
     }
 
     DataTable > .datatable--odd-row {
@@ -172,8 +172,8 @@ class TodoTextualApp(App):
         height: 3;
         border: solid cyan;
         background: $panel;
-        /* dock: bottom; removed - let it position naturally to avoid overlap with ai_input */
-        margin: 0 0 1 0;
+        margin: 0;
+        padding: 0;
     }
 
     #command_input:focus {
@@ -228,8 +228,10 @@ class TodoTextualApp(App):
     }
 
     #bottom_section {
-        height: 16;
+        height: auto;
         layout: vertical;
+        padding: 0;
+        margin: 0;
     }
 
     /* AI Chat Panel */
@@ -268,12 +270,18 @@ class TodoTextualApp(App):
         background: cyan 10%;
     }
 
+    MessageBubble:focus {
+        border: solid yellow;
+        background: yellow 15%;
+    }
+
     /* AI Input */
     #ai_input {
         height: 3;
         border: solid cyan;
         background: $panel;
-        margin: 1 0;
+        margin: 0;
+        padding: 0;
     }
 
     #ai_input:focus {
@@ -285,11 +293,12 @@ class TodoTextualApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit", priority=True),
         Binding("ctrl+k", "toggle_command_mode", "Command", show=True),
-        Binding("a", "add_task", "Add Task"),
-        Binding("e", "edit_task", "Edit"),
+        Binding("/", "show_palette", "Palette", show=True),
+        Binding("a", "add_selected", "Add"),
+        Binding("e", "edit_selected", "Edit"),
         Binding("x", "mark_done", "Done"),
         Binding("u", "mark_undone", "Undone"),
-        Binding("d", "delete_task", "Delete"),
+        Binding("d", "delete_selected", "Delete"),
         Binding("f", "filter_tasks", "Filter"),
         Binding("s", "sort_tasks", "Sort"),
         Binding("n", "next_page", "Next Page"),
@@ -299,7 +308,17 @@ class TodoTextualApp(App):
         Binding("?", "ask_ai", "Ask AI", show=True),
         Binding("ctrl+a", "toggle_ai_panel", "Toggle AI", show=True),
         Binding("ctrl+shift+c", "clear_ai", "Clear AI"),
+        Binding("ctrl+shift+y", "copy_ai", "Copy AI"),
         Binding("i", "insights", "Insights"),
+        Binding("m", "toggle_mode", "Mode"),
+        Binding("ctrl+e", "edit_note", "Edit Note"),
+        Binding("ctrl+l", "link_note", "Link Note"),
+        Binding("ctrl+u", "unlink_note", "Unlink Note"),
+        Binding("enter", "open_selected", "Open"),
+        Binding("ctrl+n", "new_note", "New Note"),
+        Binding("delete", "delete_note", "Delete Note"),
+        Binding("ctrl+d", "duplicate_note", "Duplicate Note"),
+        Binding("shift+n", "quick_note", "Quick Note"),
     ]
 
     # Reactive attributes (auto-update UI when changed)
@@ -338,6 +357,8 @@ class TodoTextualApp(App):
         self._ai_panel = None
         self._ai_input = None
         self._task_container = None
+        self._note_table = None
+        self._notes_filter_input = None
         self._main_container = None
 
         # Layout mode tracking for 4-state toggle
@@ -356,7 +377,7 @@ class TodoTextualApp(App):
         - Header (title bar)
         - Main vertical layout:
           - Main content (horizontal split):
-            - Left (70%): TaskTable (main content)
+            - Left (70%): TaskTable or NoteTable (main content)
             - Right (30%): AI Chat Panel (sidebar, collapsible)
           - Bottom section (fixed height):
             - StatusBar (stats and info)
@@ -382,6 +403,12 @@ class TodoTextualApp(App):
                     debug_log.info("Creating TaskTable widget...")
                     yield TaskTable(id="task_table")
                     debug_log.info("TaskTable created")
+                    debug_log.info("Creating NoteTable widget...")
+                    from textual.widgets import Input, Static
+                    self._notes_filter_input = Input(placeholder="Filter notes...", id="notes_filter")
+                    yield self._notes_filter_input
+                    yield NoteTable(id="note_table")
+                    debug_log.info("NoteTable created")
 
                 # Right side: AI chat panel (30%, collapsible)
                 debug_log.info("Creating AIChatPanel widget...")
@@ -402,9 +429,9 @@ class TodoTextualApp(App):
                 yield AIInput(id="ai_input")
                 debug_log.info("AIInput created")
 
-        debug_log.info("Creating Footer widget...")
-        yield Footer()
-        debug_log.info("Footer created")
+        debug_log.info("Creating ContextFooter widget...")
+        yield ContextFooter()
+        debug_log.info("ContextFooter created")
 
         debug_log.info("compose() completed - All widgets created")
 
@@ -418,6 +445,14 @@ class TodoTextualApp(App):
         debug_log.info("=" * 80)
 
         debug_log.debug("App on_mount() called - app is starting up")
+
+        # Update header title to include version at the end
+        try:
+            ver = get_version()
+            self.title = f"{self.TITLE} • v{ver}"
+        except Exception:
+            # Keep original title on failure; do not crash UI
+            pass
 
         # Debug: Check if handlers exist
         has_catch_all = hasattr(self, 'on_message')
@@ -452,9 +487,17 @@ class TodoTextualApp(App):
         debug_log.info("Caching widget references...")
         try:
             self._task_table = self.query_one(TaskTable)
+            try:
+                self._note_table = self.query_one(NoteTable)
+            except Exception:
+                self._note_table = None
             self._status_bar = self.query_one(StatusBar)
             self._command_input = self.query_one(CommandInput)
             self._ai_input = self.query_one(AIInput)
+            try:
+                self._footer = self.query_one(ContextFooter)
+            except Exception:
+                self._footer = None
 
             # Cache container references for layout management
             self._task_container = self.query_one("#task_container")
@@ -502,10 +545,11 @@ class TodoTextualApp(App):
                 self.log.error(f"Failed to initialize AI panel: {e}", exc_info=True)
                 debug_log.error(f"AI panel initialization failed: {e}", exception=e)
 
-        # Show command input by default (toggle with Ctrl+K)
+        # Hide command input by default (show with Ctrl+K or /)
+        # FIX: Prevents CommandInput from stealing focus asynchronously
         if self._command_input:
-            self._command_input.display = True
-            self.command_mode = True
+            self._command_input.display = False
+            self.command_mode = False
 
         # Show AI panel initially
         if self._ai_panel:
@@ -514,6 +558,16 @@ class TodoTextualApp(App):
         # Set initial focus to table
         debug_log.info("Setting initial focus to task table...")
         if self._task_table:
+            # Hide note table and filter initially when in tasks mode
+            if self.state.entity_mode == "tasks" and self._note_table:
+                self._note_table.display = False
+                if self._notes_filter_input:
+                    self._notes_filter_input.display = False
+            elif self.state.entity_mode == "notes" and self._note_table:
+                self._note_table.display = True
+                self._task_table.display = False
+                if self._notes_filter_input:
+                    self._notes_filter_input.display = True
             self._task_table.focus()
             debug_log.info("Initial focus set to task table")
         else:
@@ -544,24 +598,63 @@ class TodoTextualApp(App):
         Includes error boundaries to handle widget reference failures gracefully.
         """
         # Debug logging to track state synchronization
-        debug_log.info(f"[APP] refresh_table() called - {len(self.state.tasks)} tasks in state")
+        debug_log.info(f"[APP] refresh_table() called - {len(self.state.tasks)} tasks in state; mode={getattr(self.state, 'entity_mode', 'tasks')}")
         if self.state.tasks:
             task_ids = sorted([t.id for t in self.state.tasks])
             debug_log.debug(f"[APP] Task IDs in state: {task_ids[:10]}{'...' if len(task_ids) > 10 else ''}")
 
         # Use cached widget references with null checks (safety)
         try:
+            # Update or toggle tables based on entity_mode
             if self._task_table:
-                self._task_table.update_from_state(self.state)
-                debug_log.debug(f"[APP] Task table updated successfully")
+                if self.state.entity_mode == "tasks":
+                    self._task_table.display = True
+                    self._task_table.update_from_state(self.state)
+                else:
+                    self._task_table.display = False
+                debug_log.debug(f"[APP] Task table updated/toggled successfully")
             else:
                 self.log.warning("Task table reference is None, skipping update")
+
+            if self._note_table:
+                if self.state.entity_mode == "notes":
+                    self._note_table.display = True
+                    # Apply notes filter if present
+                    filter_value = self._notes_filter_input.value if self._notes_filter_input else ""
+                    notes = list(self.state.notes)
+                    debug_log.debug(f"[APP] Notes in state: {len(notes)}; filter='{filter_value}'")
+                    if filter_value:
+                        q = filter_value.strip().lower()
+                        notes = [
+                            n for n in notes
+                            if q in n.title.lower()
+                            or any(q in t for t in n.tags)
+                            or q in (n.body_md or "").lower()
+                            or n.id.startswith(q)
+                        ]
+                        debug_log.debug(f"[APP] Notes after filter: {len(notes)}")
+                    self._note_table.update_with_notes(notes)
+                    if self._notes_filter_input:
+                        self._notes_filter_input.display = True
+                else:
+                    self._note_table.display = False
+                    if self._notes_filter_input:
+                        self._notes_filter_input.display = False
+                debug_log.debug("[APP] Note table updated/toggled successfully")
+            else:
+                self.log.warning("Note table reference is None, skipping update")
 
             if self._status_bar:
                 self._status_bar.update_from_state(self.state)
                 debug_log.debug(f"[APP] Status bar updated successfully")
             else:
                 self.log.warning("Status bar reference is None, skipping update")
+
+            if getattr(self, '_footer', None):
+                try:
+                    self._footer.update_from_state()
+                except Exception:
+                    pass
 
         except Exception as e:
             # Widget update failed - log but don't crash
@@ -613,42 +706,106 @@ class TodoTextualApp(App):
 
         # Route form commands to action methods (UX unification)
         if cmd in ("add", "a"):
-            self.action_add_task()
+            # Mode-aware: creates task or note based on entity_mode
+            self.action_add_selected()
             return
 
         if cmd in ("edit", "e"):
-            # Parse task ID if provided: "edit 5"
+            # Mode-aware: edit task or note based on entity_mode
             if len(parts) >= 2:
                 try:
-                    task_id = int(parts[1])
-                    if self._task_table.select_task_by_id(task_id):
-                        self.action_edit_task()
+                    # Try to select entity by ID
+                    if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
+                        note_id = parts[1]
+                        if self._note_table and self._note_table.select_note_by_id(note_id):
+                            pass  # Selection successful
+                        else:
+                            self.notify(f"Note {note_id[:8]}... not found", severity="error")
+                            return
                     else:
-                        self.notify(f"Task #{task_id} not found", severity="error")
-                except ValueError:
-                    self.notify("Invalid task ID - must be a number", severity="error")
-            else:
-                # No task ID provided, use current selection
-                self.action_edit_task()
+                        task_id = int(parts[1])
+                        if self._task_table and self._task_table.select_task_by_id(task_id):
+                            pass  # Selection successful
+                        else:
+                            self.notify(f"Task #{task_id} not found", severity="error")
+                            return
+                except (ValueError, AttributeError) as e:
+                    if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
+                        self.notify(f"Invalid note ID: {parts[1]}", severity="error")
+                    else:
+                        self.notify("Invalid task ID - must be a number", severity="error")
+                    return
+            # Open edit modal for selected entity
+            self.action_edit_selected()
             return
 
         if cmd in ("show", "s"):
-            # Parse task ID: "show 5"
+            # In notes mode, show Note detail modal
+            if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
+                note_id = None
+                if len(parts) >= 2:
+                    note_id = parts[1]
+                # Dispatch async action
+                try:
+                    self.action_open_note(note_id)
+                except Exception:
+                    pass
+                return
+            # Tasks mode: show task detail or pass to filter handling
             if len(parts) >= 2:
                 try:
                     task_id = int(parts[1])
                     self.action_show_task(task_id)
                 except ValueError:
-                    # Not a number - could be a filter expression, let handle_command handle it
+                    # Not a number - let handle_command handle it as filter
                     pass
             else:
-                # No task ID provided, use current selection
                 task_id = self._task_table.get_selected_task_id()
                 if task_id is not None:
                     self.action_show_task(task_id)
                 else:
                     self.notify("No task selected - use 'show <id>' or select a task", severity="warning")
             return
+
+        # Notes commands routed to internal editor/modals
+        if cmd == "note":
+            if len(parts) >= 2 and parts[1] == "new":
+                self.action_new_note()
+                return
+            if len(parts) >= 3 and parts[1] == "edit":
+                from services.notes import FileNoteRepository
+                from config import DEFAULT_NOTES_DIR
+                repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+                n = repo.get(parts[2])
+                if not n:
+                    self.notify(f"Note {parts[2]} not found", severity="error")
+                else:
+                    async def _edit():
+                        edited = await self.push_screen_wait(NoteEditorModal(n))
+                        if isinstance(edited, type(n)):
+                            repo.update(edited)
+                            self.state.refresh_notes_from_disk()
+                            self.refresh_table()
+                            self.notify(f"Saved note {n.id[:8]}")
+                    self.call_later(_edit)
+                return
+
+        # In notes mode, route edit/remove to note actions
+        if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
+            if cmd in ("edit", "e"):
+                note_id = parts[1] if len(parts) >= 2 else None
+                try:
+                    # Reuse open_note then press edit inside
+                    self.action_open_note(note_id)
+                except Exception:
+                    pass
+                return
+            if cmd in ("remove", "delete", "del", "r"):
+                try:
+                    self.action_delete_note()
+                except Exception:
+                    pass
+                return
 
         # Use existing command handler from core/commands.py
         try:
@@ -667,7 +824,7 @@ class TodoTextualApp(App):
                     # Show plain text message
                     self.notify(str(last_msg), timeout=5)
 
-            # Refresh UI
+            # Refresh UI and toggle tables if mode changed
             self.refresh_table()
 
         except Exception as e:
@@ -694,6 +851,15 @@ class TodoTextualApp(App):
                 # If refresh fails, log but don't propagate
                 self.log.error("Failed to refresh UI after error", exc_info=True)
 
+    def on_input_changed(self, event) -> None:
+        try:
+            from textual.widgets import Input
+            if isinstance(event.input, Input) and event.input.id == "notes_filter":
+                # Live-filter notes table
+                self.refresh_table()
+        except Exception:
+            pass
+
     # ========================================================================
     # ACTION HANDLERS (Keyboard Shortcuts)
     # ========================================================================
@@ -710,6 +876,33 @@ class TodoTextualApp(App):
             self._command_input.display = True
             self.command_mode = True
             self._command_input.focus()
+        try:
+            if getattr(self, '_footer', None):
+                self._footer.update_from_state()
+        except Exception:
+            pass
+
+    def action_show_palette(self) -> None:
+        """Show command input (palette-like) and prefill '/' for discoverability."""
+        if not self._command_input:
+            return
+        self._command_input.display = True
+        self.command_mode = True
+        # Prefill '/' only if empty to avoid clobbering
+        try:
+            buf = self._command_input.query_one('Input')  # underlying Input, if exposed
+        except Exception:
+            buf = None
+        try:
+            # Fallback: focus is sufficient; user sees hints
+            self._command_input.focus()
+        except Exception:
+            pass
+        try:
+            if getattr(self, '_footer', None):
+                self._footer.update_from_state()
+        except Exception:
+            pass
 
     @work(exclusive=True)
     async def action_add_task(self) -> None:
@@ -789,6 +982,11 @@ class TodoTextualApp(App):
         if not task:
             self.notify(f"Task #{task_id} not found", severity="error")
             return
+        # Track selected task for note linking/unlinking shortcuts
+        try:
+            self.state.selected_task_id = task_id
+        except Exception:
+            pass
 
         # Show task detail modal
         action = await self.push_screen_wait(TaskDetailModal(task))
@@ -884,8 +1082,13 @@ class TodoTextualApp(App):
 
     def action_next_page(self) -> None:
         """Go to next page"""
-        filtered_tasks = self.state.get_filter_tasks(self.state.tasks)
-        total_pages = (len(filtered_tasks) + self.state.page_size - 1) // self.state.page_size
+        # Respect current mode for pagination
+        if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
+            total_items = len(getattr(self.state, 'notes', []))
+        else:
+            filtered_tasks = self.state.get_filter_tasks(self.state.tasks)
+            total_items = len(filtered_tasks)
+        total_pages = (total_items + self.state.page_size - 1) // self.state.page_size if total_items > 0 else 1
 
         if self.state.page < total_pages - 1:
             self.state.page += 1
@@ -913,6 +1116,92 @@ class TodoTextualApp(App):
         self.refresh_table()
         self.notify(f"View: {self.state.view_mode}")
 
+    @work(exclusive=True)
+    async def action_open_selected(self) -> None:
+        """Open detail for currently selected item in the active mode.
+
+        - In tasks mode: opens TaskDetailModal for selected task.
+        - In notes mode: opens NoteDetailModal for selected note.
+        """
+        # Validate entity_mode explicitly (prevent invalid states)
+        mode = getattr(self.state, 'entity_mode', 'tasks')
+        debug_log.info(f"[APP] 📖 action_open_selected() CALLED (mode={mode})")
+
+        if mode not in ('tasks', 'notes'):
+            debug_log.error(f"[APP] ❌ Invalid entity_mode: {mode}")
+            self.notify(f"Invalid mode: {mode}", severity="error")
+            return
+
+        # Focus guard: Enter only works when table has focus (atomic check)
+        if mode == 'notes':
+            # Capture focus state atomically to prevent TOCTTOU race
+            has_focus = self._note_table and self._note_table.has_focus
+            if not has_focus:
+                debug_log.info(f"[APP] ⏎ ENTER IGNORED - note table not focused")
+                return
+            debug_log.info(f"[APP] Delegating to action_open_note() for notes mode")
+            self.action_open_note()  # Reverted - creates worker
+            return
+
+        # Tasks mode - inline logic to avoid worker-in-worker issue
+        # Capture focus state atomically
+        has_focus = self._task_table and self._task_table.has_focus
+        if not has_focus:
+            debug_log.info(f"[APP] ⏎ ENTER IGNORED - task table not focused")
+            return
+
+        if not self._task_table:
+            debug_log.info(f"[APP] ❌ No task table reference")
+            return
+
+        # Get selected task with exception handling
+        try:
+            tid = self._task_table.get_selected_task_id()
+            debug_log.info(f"[APP] Selected task ID: {tid}")
+        except Exception as e:
+            debug_log.error(f"[APP] Failed to get selected task: {e}", exception=e)
+            self.notify("Error accessing selected task", severity="error")
+            return
+
+        if tid is None:
+            debug_log.info(f"[APP] ❌ No task selected")
+            self.notify("No task selected", severity="warning")
+            return
+
+        task = self.state.get_task_by_id(tid)
+        if not task:
+            debug_log.info(f"[APP] ❌ Task #{tid} not found in state")
+            self.notify(f"Task #{tid} not found", severity="error")
+            return
+
+        debug_log.info(f"[APP] ✅ Opening TaskDetailModal for task #{tid}")
+
+        # Track selected task for note linking/unlinking shortcuts
+        try:
+            self.state.selected_task_id = tid
+        except Exception:
+            pass
+
+        # Re-verify focus before modal (defense against race condition)
+        if not self._task_table.has_focus:
+            debug_log.info(f"[APP] ⚠️  Focus lost before modal - aborting")
+            return
+
+        # Show task detail modal directly (await within worker context)
+        debug_log.info(f"[APP] ⏸️  BEFORE push_screen_wait() - showing modal")
+        await self.push_screen_wait(TaskDetailModal(task))
+        debug_log.info(f"[APP] ▶️  AFTER push_screen_wait() - modal closed")
+
+        # After closing, restore selection and focus (Textual handles CSS automatically)
+        try:
+            if self._task_table:
+                debug_log.info(f"[APP] 🔧 Restoring selection and focus to task #{tid}")
+                self._task_table.select_task_by_id(tid)
+                self._task_table.focus()
+                debug_log.info(f"[APP] ✅ Focus restored to task table")
+        except Exception as e:
+            debug_log.warning(f"[APP] Failed to restore focus: {e}")
+
     def action_refresh(self) -> None:
         """Refresh display"""
         self.refresh_table()
@@ -931,6 +1220,361 @@ class TodoTextualApp(App):
 
         self.refresh_table()
         self.notify(f"Sort: {self.state.sort}")
+
+    @work(exclusive=True)
+    async def action_edit_selected(self) -> None:
+        """Edit the currently selected item based on mode.
+
+        - In tasks mode: opens TaskForm for selected task (existing behavior).
+        - In notes mode: opens NoteEditorModal for selected note and saves on save.
+        """
+        if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
+            if not self._note_table:
+                return
+            note_id = self._note_table.get_selected_note_id()
+            if not note_id:
+                self.notify("No note selected", severity="warning")
+                return
+            from services.notes import FileNoteRepository
+            from config import DEFAULT_NOTES_DIR
+            repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+            n = repo.get(note_id)
+            if not n:
+                self.notify("Note not found", severity="error")
+                return
+            edited = await self.push_screen_wait(NoteEditorModal(n))
+            if isinstance(edited, type(n)):
+                repo.update(edited)
+                self.state.refresh_notes_from_disk()
+                self.refresh_table()
+                self.notify(f"Saved note {n.id[:8]}")
+            return
+
+        # Tasks mode
+        self.action_edit_task()
+
+    async def action_delete_selected(self) -> None:
+        """Delete currently selected entity based on mode."""
+        if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
+            self.action_delete_note()
+            return
+        # Tasks mode
+        self.action_delete_task()
+
+    async def action_add_selected(self) -> None:
+        """Add new entity based on current mode.
+
+        - In notes mode: creates a new note (opens NoteEditorModal).
+        - In tasks mode: opens TaskForm for new task (existing behavior).
+        """
+        if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
+            self.action_new_note()
+        else:
+            self.action_add_task()
+
+    def action_toggle_mode(self) -> None:
+        """Toggle between tasks and notes mode"""
+        self.state.entity_mode = "notes" if self.state.entity_mode == "tasks" else "tasks"
+        self.refresh_table()
+        # Focus appropriate table
+        if self.state.entity_mode == "tasks" and self._task_table:
+            self._task_table.focus()
+        elif self.state.entity_mode == "notes" and self._note_table:
+            self._note_table.focus()
+        self.notify(f"Mode: {self.state.entity_mode}")
+
+    def _ensure_note_selection(self) -> str | None:
+        if self.state.entity_mode != "notes":
+            self.notify("Switch to notes mode (m) to edit/link notes", severity="warning")
+            return None
+        if not self._note_table:
+            self.notify("Note table not available", severity="error")
+            return None
+        note_id = self._note_table.get_selected_note_id()
+        if not note_id:
+            self.notify("No note selected", severity="warning")
+            return None
+        return note_id
+
+    @work(exclusive=True)
+    async def action_edit_note(self) -> None:
+        from services.notes import FileNoteRepository
+        from config import DEFAULT_NOTES_DIR
+        note_id = self._ensure_note_selection()
+        if not note_id:
+            return
+        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+        n = repo.get(note_id)
+        if not n:
+            self.notify(f"Note {note_id} not found", severity="error")
+            return
+        # Replace external editor with in-app editor for consistency
+        edited = await self.push_screen_wait(NoteEditorModal(n))
+        if isinstance(edited, type(n)):
+            repo.update(edited)
+        self.state.refresh_notes_from_disk()
+        self.refresh_table()
+        self.notify(f"Edited note {n.id[:8]}")
+
+    @work(exclusive=True)
+    async def action_link_note(self) -> None:
+        from services.notes import FileNoteRepository
+        from config import DEFAULT_NOTES_DIR
+        note_id = self._ensure_note_selection()
+        if not note_id:
+            return
+        task_id = getattr(self.state, "selected_task_id", None)
+        if task_id is None:
+            # Open picker modal for choosing a task (await within worker)
+            tasks = self.state.get_filter_tasks(self.state.tasks)
+            picked = await self.push_screen_wait(LinkTaskPicker(tasks))
+            if picked is None:
+                self.notify("Link cancelled", severity="information")
+                return
+            repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+            n2 = repo.get(note_id)
+            if not n2:
+                self.notify("Note no longer exists", severity="error")
+                return
+            repo.link_task(n2, int(picked))
+            self.state.refresh_notes_from_disk()
+            self.refresh_table()
+            self.notify(f"Linked note {n2.id[:8]} to task {picked}")
+            return
+        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+        n = repo.get(note_id)
+        if not n:
+            self.notify(f"Note {note_id} not found", severity="error")
+            return
+        repo.link_task(n, task_id)
+        self.state.refresh_notes_from_disk()
+        self.refresh_table()
+        self.notify(f"Linked note {n.id[:8]} to task {task_id}")
+
+    def action_unlink_note(self) -> None:
+        from services.notes import FileNoteRepository
+        from config import DEFAULT_NOTES_DIR
+        note_id = self._ensure_note_selection()
+        if not note_id:
+            return
+        task_id = getattr(self.state, "selected_task_id", None)
+        if task_id is None:
+            self.notify("Use 'show <task_id>' first to select a task", severity="warning")
+            return
+        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+        n = repo.get(note_id)
+        if not n:
+            self.notify(f"Note {note_id} not found", severity="error")
+            return
+        repo.unlink_task(n, task_id)
+        self.state.refresh_notes_from_disk()
+        self.refresh_table()
+        self.notify(f"Unlinked note {n.id[:8]} from task {task_id}")
+
+    @work(exclusive=True)
+    async def action_open_note(self, note_id: str | None = None) -> None:
+        # Open note detail modal, allow editing with 'e'
+        if self.state.entity_mode != "notes" or not self._note_table:
+            return
+        if not note_id:
+            note_id = self._note_table.get_selected_note_id()
+        if not note_id:
+            self.notify("No note selected", severity="warning")
+            return
+        from services.notes import FileNoteRepository
+        from config import DEFAULT_NOTES_DIR
+        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+        n = repo.get(note_id)
+        if not n:
+            self.notify("Note not found", severity="error")
+            return
+        result = await self.push_screen_wait(NoteDetailModal(n))
+        if result == "edit":
+            editor_result = await self.push_screen_wait(NoteEditorModal(n))
+            if isinstance(editor_result, type(n)):
+                repo.update(editor_result)
+                self.state.refresh_notes_from_disk()
+                self.refresh_table()
+                self.notify(f"Saved note {n.id[:8]}")
+        elif result == "link":
+            tasks = self.state.get_filter_tasks(self.state.tasks)
+            pick = await self.push_screen_wait(LinkTaskPicker(tasks))
+            if pick is not None:
+                repo.link_task(n, int(pick))
+                self.state.refresh_notes_from_disk()
+                self.refresh_table()
+                self.notify(f"Linked note {n.id[:8]} to task {pick}")
+        elif isinstance(result, str) and result.startswith("unlink:"):
+            tid = result.split(":", 1)[1]
+            try:
+                repo.unlink_task(n, int(tid))
+                self.state.refresh_notes_from_disk()
+                self.refresh_table()
+                self.notify(f"Unlinked note {n.id[:8]} from task {tid}")
+            except Exception:
+                self.notify("Unlink failed", severity="error")
+
+        # After closing note modal, re-focus notes table and restore selection
+        try:
+            if self._note_table:
+                self._note_table.select_note_by_id(n.id)
+                self._note_table.focus()
+        except Exception:
+            pass
+
+    @work(exclusive=True)
+    async def action_new_note(self) -> None:
+        """Create a new note using only the in-app editor (no title prompt)."""
+        from services.notes import FileNoteRepository
+        from config import DEFAULT_NOTES_DIR
+        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+
+        # Link to selected task if any (when starting from tasks mode)
+        task_ids = []
+        if self.state.entity_mode == "tasks" and self._task_table:
+            tid = self._task_table.get_selected_task_id()
+            if tid is not None:
+                task_ids = [tid]
+        # Create with a default title; the editor will update it
+        note = repo.create(title="New Note", task_ids=task_ids)
+        # Open internal editor modal with is_new=True
+        edited = await self.push_screen_wait(NoteEditorModal(note, is_new=True))
+
+        # If user canceled (Esc), delete the note
+        if edited is None:
+            try:
+                repo.delete(note.id)
+            except Exception:
+                pass  # Note may not exist, ignore
+        elif isinstance(edited, type(note)):
+            # User saved - update the note
+            repo.update(edited)
+
+        self.state.refresh_notes_from_disk()
+        self.state.entity_mode = "notes"
+        self.refresh_table()
+
+        # Only select and notify if note was saved (not canceled)
+        if edited is not None and self._note_table:
+            try:
+                self._note_table.select_note_by_id(note.id)
+                self._note_table.focus()
+            except Exception:
+                pass
+            self.notify(f"Created note {note.id[:8]}")
+
+    @work(exclusive=True)
+    async def action_delete_note(self) -> None:
+        if self.state.entity_mode != "notes" or not self._note_table:
+            return
+        note_id = self._note_table.get_selected_note_id()
+        if not note_id:
+            self.notify("No note selected", severity="warning")
+            return
+        from textual_widgets.confirm_dialog import ConfirmDialog
+        from services.notes import FileNoteRepository
+        from config import DEFAULT_NOTES_DIR
+        dialog = ConfirmDialog(
+            title="Delete Note",
+            message=f"Are you sure you want to delete note {note_id[:8]}?",
+            confirm_text="Delete",
+            cancel_text="Cancel",
+        )
+        confirmed = await self.push_screen_wait(dialog)
+        if confirmed:
+            repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+            ok = repo.delete(note_id)
+            self.state.refresh_notes_from_disk()
+            self.refresh_table()
+            if ok:
+                self.notify("Note deleted", severity="warning")
+            else:
+                self.notify("No note deleted", severity="warning")
+        else:
+            self.notify("Delete cancelled", severity="information")
+
+    def action_duplicate_note(self) -> None:
+        """Quickly duplicate the selected note (keeps links, adds 'Copy of' prefix)."""
+        if self.state.entity_mode != "notes" or not self._note_table:
+            return
+        note_id = self._note_table.get_selected_note_id()
+        if not note_id:
+            self.notify("No note selected", severity="warning")
+            return
+        from services.notes import FileNoteRepository
+        from config import DEFAULT_NOTES_DIR
+        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+        src = repo.get(note_id)
+        if not src:
+            self.notify("Note not found", severity="error")
+            return
+        new = repo.create(
+            title=f"Copy of {src.title}",
+            tags=list(src.tags),
+            task_ids=list(src.task_ids),
+            body_md=src.body_md,
+        )
+        self.state.refresh_notes_from_disk()
+        self.refresh_table()
+        if self._note_table:
+            try:
+                self._note_table.select_note_by_id(new.id)
+                self._note_table.focus()
+            except Exception:
+                pass
+        self.notify(f"Duplicated note {src.id[:8]} → {new.id[:8]}")
+
+    @work(exclusive=True)
+    async def action_quick_note(self) -> None:
+        """Create a quick note and open the in-app editor; link to selected task if any."""
+        from services.notes import FileNoteRepository
+        from config import DEFAULT_NOTES_DIR
+        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+
+        # Link to selected task if available
+        link_tid = None
+        if self.state.entity_mode == "tasks" and self._task_table:
+            link_tid = self._task_table.get_selected_task_id()
+        if link_tid is None:
+            link_tid = getattr(self.state, 'selected_task_id', None)
+
+        # Create with default title (user updates in editor)
+        note = repo.create(title="Quick Note", task_ids=[link_tid] if link_tid else [])
+        # Open editor with is_new=True
+        edited = await self.push_screen_wait(NoteEditorModal(note, is_new=True))
+
+        # If user canceled (Esc), delete the note
+        if edited is None:
+            try:
+                repo.delete(note.id)
+            except Exception:
+                pass  # Note may not exist, ignore
+        elif isinstance(edited, type(note)):
+            # User saved - update the note
+            repo.update(edited)
+
+        self.state.refresh_notes_from_disk()
+        self.state.entity_mode = "notes"
+        self.refresh_table()
+
+        # Only select and notify if note was saved (not canceled)
+        if edited is not None and self._note_table:
+            try:
+                self._note_table.select_note_by_id(note.id)
+                self._note_table.focus()
+            except Exception:
+                pass
+            self.notify(f"Quick note {note.id[:8]} created")
+
+    # Update footer on focus changes
+    def on_focus(self, event) -> None:
+        try:
+            if getattr(self, '_footer', None):
+                self._footer.update_from_state()
+        except Exception:
+            pass
+
+        self.call_later(_create)
 
     def action_help(self) -> None:
         """Show help (placeholder - Phase 2)"""
@@ -1071,6 +1715,54 @@ Ctrl+Shift+C - Clear AI q - Quit
 
         self.notify("Insights generated")
 
+    def _copy_to_clipboard(self, text: str) -> bool:
+        """Copy text to system clipboard with best-effort cross-platform support."""
+        try:
+            import sys, subprocess, shutil
+            if sys.platform.startswith("win"):
+                p = subprocess.run(["cmd", "/c", "clip"], input=text.encode("utf-16le"), capture_output=True)
+                return p.returncode == 0
+            elif sys.platform == "darwin":
+                p = subprocess.run(["pbcopy"], input=text.encode("utf-8"), capture_output=True)
+                return p.returncode == 0
+            else:
+                if shutil.which("xclip"):
+                    p = subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode("utf-8"), capture_output=True)
+                    return p.returncode == 0
+                if shutil.which("xsel"):
+                    p = subprocess.run(["xsel", "--clipboard", "--input"], input=text.encode("utf-8"), capture_output=True)
+                    return p.returncode == 0
+        except Exception:
+            pass
+        # Fallback to tkinter
+        try:
+            import tkinter as tk
+            r = tk.Tk()
+            r.withdraw()
+            r.clipboard_clear()
+            r.clipboard_append(text)
+            r.update()
+            r.destroy()
+            return True
+        except Exception:
+            return False
+
+    def action_copy_ai(self) -> None:
+        """Copy the last AI message to the clipboard (Ctrl+Shift+Y)."""
+        if not self._ai_panel or not self.state.ai_conversation:
+            self.notify("No AI message to copy", severity="warning")
+            return
+        last = self.state.ai_conversation[-1]
+        content = (last.content or "").strip()
+        if not content:
+            self.notify("AI message is empty", severity="warning")
+            return
+        ok = self._copy_to_clipboard(content)
+        if ok:
+            self.notify("AI message copied to clipboard", severity="information")
+        else:
+            self.notify("Clipboard not available on this system", severity="error")
+
     # REMOVED on_message() catch-all to test if it was interfering
 
     def on_ai_input_prompt_submitted(self, message: AIInput.PromptSubmitted) -> None:
@@ -1151,10 +1843,17 @@ Ctrl+Shift+C - Clear AI q - Quit
             debug_log.debug("[STEP 12] Showing streaming indicator...")
             self.call_from_thread(ai_panel.show_streaming_indicator)
 
-            # Initialize assistant
+            # Initialize assistant (optional)
             debug_log.debug("[STEP 12] Initializing Assistant...")
-            assistant = Assistant(state=self.state)
-            debug_log.debug(f"[STEP 12] Assistant initialized: {type(assistant).__name__}")
+            try:
+                from assistant import Assistant  # type: ignore
+                assistant = Assistant(state=self.state)
+                debug_log.debug(f"[STEP 12] Assistant initialized: {type(assistant).__name__}")
+            except Exception as e:
+                debug_log.warning(f"[STEP 12] Assistant unavailable: {e}")
+                self.call_from_thread(ai_panel.hide_streaming_indicator)
+                self.call_from_thread(self.notify, "AI assistant not available", severity="warning")
+                return
 
             # Get conversation context (last 20 messages)
             debug_log.debug("[STEP 12] Getting conversation context...")

@@ -15,7 +15,7 @@ import shutil
 import tempfile
 from typing import Any, Optional, Dict
 from pathlib import Path
-from rich.console import Console
+from typing import Any
 from utils.file_validators import validate_filename
 import threading
 
@@ -60,7 +60,7 @@ class SafeFileManager:
         filename: str,
         lock_timeout: float = 5.0,
         backup_count: int = 3,
-        console: Optional[Console] = None
+        console: Optional[Any] = None
     ):
         """
         Initialize SafeFileManager.
@@ -82,7 +82,7 @@ class SafeFileManager:
         self.filename = Path(filename)
         self.lock_timeout = lock_timeout
         self.backup_count = backup_count
-        self.console = console or Console()
+        self.console = console
         # Intra-process write lock to serialize saves
         self._write_lock: threading.Lock = threading.Lock()
 

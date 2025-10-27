@@ -24,7 +24,15 @@
       "WebFetch(domain:textual.textualize.io)",
       "Bash(dir /b tasks.json*)",
       "Bash(if exist \"D:\\MyProjects\\todo-cli\\tasks.json.backup\" type \"D:\\MyProjects\\todo-cli\\tasks.json.backup\")",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(pytest:*)",
+      "Bash(powershell -command \"(Get-Content debug_ai_flow.log | Measure-Object -Line).Lines\")",
+      "Bash(taskkill:*)",
+      "Bash(powershell -command \"Get-Process python | Stop-Process -Force\")",
+      "Bash(powershell -command \"Get-Process python -ErrorAction SilentlyContinue | Stop-Process -Force\")",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "WebFetch(domain:darren.codes)"
     ],
     "deny": [],
     "ask": []

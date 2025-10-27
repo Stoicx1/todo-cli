@@ -8,9 +8,9 @@
 
 ### **1. Command Shortcuts** (60% faster!) - Updated Oct 2025
 ```bash
-# Task Operations
-a          # add (opens interactive form)
-e <id>     # edit <id>
+# Task Operations (MODE-AWARE)
+a          # add (tasks mode: task form | notes mode: note editor)
+e <id>     # edit (tasks mode: edit task | notes mode: edit note)
 x <id>     # done <id> (x OR d both work!)
 d <id>     # done <id> (d OR x both work!)
 u <id>     # undone <id>
@@ -70,8 +70,8 @@ save   # Save tasks without exiting
 ### **Task Management** (Updated Oct 2025)
 | Command | Shortcut | Usage | Example |
 |---------|----------|-------|---------|
-| add | `a` | `add` | Opens interactive form |
-| edit | `e` | `edit <id>` | `e 5` or `edit 5` |
+| add | `a` | `add` | **Mode-aware**: Opens task form or note editor |
+| edit | `e` | `edit <id>` | **Mode-aware**: Edits task or note |
 | done | `x` / `d` | `done <id> [ids...]` | `x 3` or `d 1-5` (both work!) |
 | undone | `u` | `undone <id> [ids...]` | `u 3` or `undone 1 2 3` |
 | remove | `r` | `remove <id> [ids...]` | `r 10` or `remove 1-5,8` |
@@ -121,6 +121,7 @@ save   # Save tasks without exiting
 | save | - | `save` | Save tasks to file |
 | cls | `c` | `cls`, `clear`, or `c` | Clear and refresh |
 | exit | `q` | `exit`, `quit`, or `q` | Save and exit |
+| version | - | `python main.py --version` | Show CLI version |
 
 ### **Settings**
 - Preferences saved to `~/.todo_cli_settings.json`
@@ -262,6 +263,22 @@ Check your syntax:
 
 ---
 
+## 🔄 Mode-Aware Commands (Oct 2025)
+
+The `add` and `edit` commands automatically adapt based on your current mode:
+
+**Tasks Mode** (default):
+- `a` or `add` → Opens task add form
+- `e` or `edit 5` → Opens task edit form
+
+**Notes Mode** (press `m` to switch):
+- `a` or `add` → Opens note editor ("Create Note")
+- `e` or `edit abc123` → Opens note editor ("Edit Note")
+
+**Toggle modes:** Press `m` key or type `mode notes` / `mode tasks`
+
+---
+
 ## 🎯 Common Workflows
 
 ### **Morning Routine**
@@ -312,3 +329,38 @@ Check your syntax:
 ## Age
 - Sort: sort age [asc|desc] (asc=youngest first)
 - Filter: ge>=3d, ge<=2h, ge>=30m`n- Column: ID | Age | Priority | Tags | Task
+
+---
+
+## Notes (Offline)
+Commands
+```bash
+mode notes                 # Switch to notes list
+notes [task_id|query]      # Show notes for task or search; paged (next/prev)
+notes clear                # Clear notes filters
+note new --title "..." [--task 12] [--tag x]
+note edit <note_id>        # Edit by id prefix
+note link <note_id> <task> # Link to task / unlink
+note unlink <note_id> <task>
+note delete <note_id>      # Delete by id prefix
+note duplicate <note_id> [--title "..."] [--task 12]
+```
+
+Shortcuts
+- Textual: m toggle mode, Enter open, Ctrl+E edit, Shift+N quick, Ctrl+N new, Ctrl+L link, Ctrl+U unlink, Ctrl+D duplicate, Delete remove
+- Rich: Ctrl+N new (selected task), Ctrl+O open latest (selected task)
+
+---
+
+## AI + Notes (Cheat Sheet)
+Examples
+```bash
+? create a note "Design log" linked to task 12
+? search notes "webasto" and link the first to task 3
+? get note details abcd1234
+? convert note abcd1234 into a task with priority 1 tags backend,api
+? open note abcd1234 in editor
+```
+Tips
+- Prefer notes for long text; use task comment for short context
+- Edit tags with +tag to add and -tag to remove

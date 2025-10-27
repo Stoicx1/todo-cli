@@ -15,9 +15,19 @@ from core.state import AppState
 class MessageBubble(Static):
     """A single message bubble (user or assistant)"""
 
+    # Make focusable for keyboard navigation
+    can_focus = True
+
+    # Key bindings for copy functionality
+    BINDINGS = [
+        ("c", "copy", "Copy message"),
+        ("y", "copy", "Copy message"),
+    ]
+
     def __init__(self, message: AIMessage, **kwargs):
+        # Disable markup so partial streaming chunks can't break Rich parser
         self.message = message
-        super().__init__(**kwargs)
+        super().__init__(markup=False, **kwargs)
         self.update_content()
 
     def update_content(self):
@@ -45,8 +55,44 @@ class MessageBubble(Static):
         else:
             self.add_class("ai-message")
 
-        # Update content
+        # Update content (markup disabled to avoid streaming tag errors)
         self.update(f"{header}\n{self.message.content}")
+
+    def action_copy(self) -> None:
+        """
+        Copy message content to clipboard
+
+        Uses pyperclip for cross-platform clipboard support.
+        Falls back to Textual's OSC 52 if pyperclip unavailable.
+        """
+        content = self.message.content
+
+        if not content:
+            self.app.notify("No content to copy", severity="warning")
+            return
+
+        # Try pyperclip first (best cross-platform support)
+        try:
+            import pyperclip
+            pyperclip.copy(content)
+            char_count = len(content)
+            lines = content.count('\n') + 1
+            msg = f"Copied {char_count} chars ({lines} lines)"
+            self.app.notify(msg, severity="information", timeout=3)
+            return
+        except ImportError:
+            # pyperclip not installed
+            pass
+        except Exception as e:
+            # pyperclip failed (e.g., no clipboard mechanism)
+            self.app.notify(f"Clipboard error: {str(e)[:50]}", severity="warning")
+
+        # Fallback to Textual's copy_to_clipboard (OSC 52)
+        try:
+            self.app.copy_to_clipboard(content)
+            self.app.notify("Copied via OSC 52 (terminal clipboard)", severity="information", timeout=3)
+        except Exception as e:
+            self.app.notify(f"Failed to copy: {str(e)[:50]}", severity="error")
 
 
 class AIChatPanel(VerticalScroll):

@@ -5,9 +5,10 @@ from dataclasses import asdict
 from pathlib import Path
 import json
 
-from rich.console import Console
+from typing import Any
 
 from models.task import Task
+from models.note import Note
 from models.ai_message import AIMessage
 from utils.tag_parser import parse_tags, normalize_tag
 from core.file_safety import (
@@ -34,6 +35,15 @@ class AppState:
         self.filter: str = "none"
         self.sort: str = "priority"
         self.sort_order: str = "asc"  # 'asc' or 'desc'
+
+        # Notes & mode
+        self.notes: List[Note] = []
+        self.entity_mode: str = "tasks"  # tasks | notes
+        self._note_index: Dict[str, Note] = {}
+        self._notes_by_task: Dict[int, List[str]] = {}
+        self.selected_task_id: int | None = None
+        self.notes_query: str = ""
+        self.notes_task_id_filter: int | None = None
 
         # AI panel state (for live output rendering in Rich UI)
         self.ai_text: str = ""
@@ -200,7 +210,19 @@ class AppState:
     # ------------------------------------------------------------------
     # Persistence (tasks)
     # ------------------------------------------------------------------
-    def save_to_file(self, filename: str, console: Console):
+    def _console_print(self, console: Any | None, message: str) -> None:
+        try:
+            if console is None:
+                return
+            if hasattr(console, "print"):
+                console.print(message)
+            else:
+                # Fallback to stdout
+                print(message)
+        except Exception:
+            pass
+
+    def save_to_file(self, filename: str, console: Any | None = None):
         """Save all tasks with atomic write and backups, including safety guards."""
         if self._file_manager is None:
             self._file_manager = SafeFileManager(
@@ -227,8 +249,9 @@ class AppState:
                 debug_log.warning("[STATE] WARNING: Saving empty task list!")
                 if self._last_saved_count > 0:
                     warning_mark = "⚠" if USE_UNICODE else "!"
-                    console.print(
-                        f"[red]{warning_mark} CRITICAL: Refusing to overwrite existing tasks with empty list (previous: {self._last_saved_count})."
+                    self._console_print(
+                        console,
+                        f"[red]{warning_mark} CRITICAL: Refusing to overwrite existing tasks with empty list (previous: {self._last_saved_count}).",
                     )
                     return
 
@@ -239,8 +262,9 @@ class AppState:
                     f"[STATE] CRITICAL: Attempting to save 0 tasks (previous: {self._last_saved_count})"
                 )
                 warning_mark = "⚠" if USE_UNICODE else "!"
-                console.print(
-                    f"[red]{warning_mark} CRITICAL: Attempting to delete ALL {self._last_saved_count} tasks! Check backup files.[/red]"
+                self._console_print(
+                    console,
+                    f"[red]{warning_mark} CRITICAL: Attempting to delete ALL {self._last_saved_count} tasks! Check backup files.[/red]",
                 )
                 return
             elif current_count < self._last_saved_count * 0.5 and self._last_saved_count > 5:
@@ -248,8 +272,9 @@ class AppState:
                     f"[STATE] WARNING: Task count dropped {self._last_saved_count} -> {current_count}"
                 )
                 warning_mark = "⚠" if USE_UNICODE else "!"
-                console.print(
-                    f"[yellow]{warning_mark} Warning: Task count dropped from {self._last_saved_count} to {current_count}[/yellow]"
+                self._console_print(
+                    console,
+                    f"[yellow]{warning_mark} Warning: Task count dropped from {self._last_saved_count} to {current_count}[/yellow]",
                 )
 
             tasks_data = [asdict(task) for task in self.tasks]
@@ -257,7 +282,7 @@ class AppState:
 
             debug_log.info(f"[STATE] Save successful - {len(self.tasks)} tasks written")
             check_mark = "✓" if USE_UNICODE else "+"
-            console.print(f"[green]{check_mark}[/green] Tasks saved to [bold]{filename}[/bold]")
+            self._console_print(console, f"[green]{check_mark}[/green] Tasks saved to [bold]{filename}[/bold]")
 
             self._last_saved_count = current_count
             self._save_preferences()
@@ -265,11 +290,11 @@ class AppState:
         except FileLockTimeoutError as e:
             x_mark = "✗" if USE_UNICODE else "X"
             bulb = "💡" if USE_UNICODE else "!"
-            console.print(f"[red]{x_mark}[/red] {e}")
-            console.print(f"[yellow]{bulb} Close other instances and try again[/yellow]")
+            self._console_print(console, f"[red]{x_mark}[/red] {e}")
+            self._console_print(console, f"[yellow]{bulb} Close other instances and try again[/yellow]")
         except Exception as e:
             x_mark = "✗" if USE_UNICODE else "X"
-            console.print(f"[red]{x_mark}[/red] Failed to save tasks: {e}")
+            self._console_print(console, f"[red]{x_mark}[/red] Failed to save tasks: {e}")
 
     def load_from_file(self, filename: str, console: Console):
         """Load tasks with recovery from backups and rebuild indices/preferences."""
@@ -289,12 +314,33 @@ class AppState:
             check_mark = "✓" if USE_UNICODE else "+"
             console.print(f"[green]{check_mark}[/green] Tasks loaded from [bold]{filename}[/bold]")
 
+            # Load notes from filesystem
+            try:
+                from services.notes import FileNoteRepository
+                from config import DEFAULT_NOTES_DIR
+                repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+                self.notes = repo.list_all()
+                self._rebuild_note_indexes()
+            except Exception:
+                self.notes = []
+                self._note_index = {}
+                self._notes_by_task = {}
+
         except FileNotFoundError:
             info_mark = "ℹ" if USE_UNICODE else "i"
             console.print(f"[yellow]{info_mark}[/yellow] No saved tasks found. Starting fresh.")
             self.tasks = []
             self.next_id = 1
             self._load_preferences()
+            # Initialize notes directory if missing
+            try:
+                from services.notes import FileNoteRepository
+                from config import DEFAULT_NOTES_DIR
+                repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+                self.notes = repo.list_all()
+                self._rebuild_note_indexes()
+            except Exception:
+                self.notes = []
         except FileCorruptionError:
             x_mark = "✗" if USE_UNICODE else "X"
             bulb = "💡" if USE_UNICODE else "!"
@@ -303,6 +349,9 @@ class AppState:
             self.tasks = []
             self.next_id = 1
             self._load_preferences()
+            self.notes = []
+            self._note_index = {}
+            self._notes_by_task = {}
         except FileLockTimeoutError as e:
             warning = "⚠" if USE_UNICODE else "!"
             bulb = "💡" if USE_UNICODE else "!"
@@ -311,6 +360,43 @@ class AppState:
             self.tasks = []
             self.next_id = 1
             self._load_preferences()
+            self.notes = []
+            self._note_index = {}
+            self._notes_by_task = {}
+
+    # ------------------------------------------------------------------
+    # Notes indexing & queries
+    # ------------------------------------------------------------------
+    def _rebuild_note_indexes(self) -> None:
+        self._note_index = {n.id: n for n in self.notes}
+        by_task: Dict[int, List[str]] = {}
+        for n in self.notes:
+            for tid in n.task_ids:
+                by_task.setdefault(tid, []).append(n.id)
+        self._notes_by_task = by_task
+
+    def get_notes_for_task(self, task_id: int) -> List[Note]:
+        ids = self._notes_by_task.get(task_id, [])
+        return [self._note_index[i] for i in ids if i in self._note_index]
+
+    def refresh_notes_from_disk(self) -> None:
+        try:
+            from services.notes import FileNoteRepository
+            from config import DEFAULT_NOTES_DIR
+            repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+            notes = repo.list_all()
+            self.notes = notes
+            self._rebuild_note_indexes()
+            try:
+                from debug_logger import debug_log
+                debug_log.info(f"[STATE] Notes refreshed from disk - {len(notes)} notes")
+                if notes:
+                    sample = ", ".join((n.title or 'Untitled')[:24] for n in notes[:5])
+                    debug_log.debug(f"[STATE] Note sample: {sample}")
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------
     # Preferences
@@ -417,4 +503,151 @@ class AppState:
             x_mark = "✗" if USE_UNICODE else "X"
             console.print(f"[red]{x_mark}[/red] Error loading conversation: {e}. Starting fresh.")
             self.ai_conversation = []
+
+# --- Runtime overrides for output glyphs and save/load to avoid mojibake ---
+# Some environments produced corrupted glyphs in string literals. The following
+# overrides replace any problematic implementations with clean, safe versions.
+
+def _appstate_save_to_file_clean(self, filename: str, console: Console | None):
+    if self._file_manager is None:
+        self._file_manager = SafeFileManager(
+            filename, lock_timeout=5.0, backup_count=3, console=console
+        )
+    try:
+        from debug_logger import debug_log as _dl
+        try:
+            import threading as _t
+            thr = _t.current_thread().name
+        except Exception:
+            thr = "unknown"
+        _dl.info(
+            f"[STATE] save_to_file() - Saving {len(self.tasks)} tasks to {filename} [thread={thr}]"
+        )
+        current_count = len(self.tasks)
+        if not self.tasks and getattr(self, "_last_saved_count", 0) > 0:
+            warn = "⚠" if USE_UNICODE else "!"
+            if console:
+                console.print(
+                    f"[red]{warn} CRITICAL: Refusing to overwrite existing tasks with empty list (previous: {self._last_saved_count})."
+                )
+            return
+        if current_count == 0 and getattr(self, "_last_saved_count", 0) > 0:
+            warn = "⚠" if USE_UNICODE else "!"
+            if console:
+                console.print(
+                    f"[red]{warn} CRITICAL: Attempting to delete ALL {self._last_saved_count} tasks! Check backup files.[/red]"
+                )
+            return
+        tasks_data = [asdict(task) for task in self.tasks]
+        self._file_manager.save_json_with_lock(tasks_data, indent=performance.JSON_INDENT)
+        _dl.info(f"[STATE] Save successful - {len(self.tasks)} tasks written")
+        check = "✓" if USE_UNICODE else "+"
+        if console:
+            console.print(f"[green]{check}[/green] Tasks saved to [bold]{filename}[/bold]")
+        self._last_saved_count = current_count
+        self._save_preferences()
+    except FileLockTimeoutError as e:
+        x = "✗" if USE_UNICODE else "X"
+        bulb = "💡" if USE_UNICODE else "!"
+        if console:
+            console.print(f"[red]{x}[/red] {e}")
+            console.print(f"[yellow]{bulb} Close other instances and try again[/yellow]")
+    except Exception as e:
+        x = "✗" if USE_UNICODE else "X"
+        if console:
+            console.print(f"[red]{x}[/red] Failed to save tasks: {e}")
+
+
+def _appstate_load_from_file_clean(self, filename: str, console: Console):
+    if self._file_manager is None:
+        self._file_manager = SafeFileManager(
+            filename, lock_timeout=5.0, backup_count=3, console=console
+        )
+    try:
+        tasks_data = self._file_manager.load_json_with_lock()
+        self.tasks = [Task(**t) for t in tasks_data]
+        self.next_id = max((t.id for t in self.tasks), default=0) + 1
+        self._rebuild_index()
+        self._rebuild_tag_index()
+        self._load_preferences()
+        check = "✓" if USE_UNICODE else "+"
+        console.print(f"[green]{check}[/green] Tasks loaded from [bold]{filename}[/bold]")
+        try:
+            from services.notes import FileNoteRepository
+            from config import DEFAULT_NOTES_DIR
+            repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+            self.notes = repo.list_all()
+            self._rebuild_note_indexes()
+        except Exception:
+            self.notes = []
+            self._note_index = {}
+    except FileNotFoundError:
+        info = "ℹ" if USE_UNICODE else "i"
+        console.print(f"[yellow]{info}[/yellow] No saved tasks found. Starting fresh.")
+        self.tasks = []
+        self.next_id = 1
+    except FileCorruptionError:
+        x = "✗" if USE_UNICODE else "X"
+        console.print(f"[red]{x}[/red] All files corrupted and no valid backups!")
+        self.tasks = []
+        self.next_id = 1
+    except Exception as e:
+        x = "✗" if USE_UNICODE else "X"
+        console.print(f"[red]{x}[/red] Error loading tasks: {e}")
+        self.tasks = []
+        self.next_id = 1
+
+
+def _appstate_save_conversation_clean(self, filename: str, console: Console) -> None:
+    if self._ai_file_manager is None:
+        self._ai_file_manager = SafeFileManager(
+            filename, lock_timeout=5.0, backup_count=3, console=console
+        )
+    try:
+        data = [m.to_dict() for m in self.ai_conversation]
+        self._ai_file_manager.save_json_with_lock(data, indent=2)
+        check = "✓" if USE_UNICODE else "+"
+        console.print(f"[green]{check}[/green] Conversation saved to [bold]{filename}[/bold]")
+    except FileLockTimeoutError as e:
+        x = "✗" if USE_UNICODE else "X"
+        console.print(f"[red]{x}[/red] {e}")
+    except Exception as e:
+        x = "✗" if USE_UNICODE else "X"
+        console.print(f"[red]{x}[/red] Failed to save conversation: {e}")
+
+
+def _appstate_load_conversation_clean(self, filename: str, console: Console) -> None:
+    if self._ai_file_manager is None:
+        self._ai_file_manager = SafeFileManager(
+            filename, lock_timeout=5.0, backup_count=3, console=console
+        )
+    try:
+        data = self._ai_file_manager.load_json_with_lock()
+        self.ai_conversation = [AIMessage.from_dict(m) for m in data]
+        check = "✓" if USE_UNICODE else "+"
+        console.print(
+            f"[green]{check}[/green] Conversation loaded from [bold]{filename}[/bold] ({len(self.ai_conversation)} messages)"
+        )
+    except FileNotFoundError:
+        info = "ℹ" if USE_UNICODE else "i"
+        console.print(f"[yellow]{info}[/yellow] No saved conversation found. Starting fresh.")
+        self.ai_conversation = []
+    except FileCorruptionError:
+        x = "✗" if USE_UNICODE else "X"
+        console.print(f"[red]{x}[/red] Conversation file corrupted. Starting fresh.")
+        self.ai_conversation = []
+    except Exception as e:
+        x = "✗" if USE_UNICODE else "X"
+        console.print(f"[red]{x}[/red] Error loading conversation: {e}. Starting fresh.")
+        self.ai_conversation = []
+
+
+# Apply overrides (last definition wins)
+try:
+    AppState.save_to_file = _appstate_save_to_file_clean  # type: ignore[attr-defined]
+    AppState.load_from_file = _appstate_load_from_file_clean  # type: ignore[attr-defined]
+    AppState.save_conversation_to_file = _appstate_save_conversation_clean  # type: ignore[attr-defined]
+    AppState.load_conversation_from_file = _appstate_load_conversation_clean  # type: ignore[attr-defined]
+except Exception:
+    pass
 

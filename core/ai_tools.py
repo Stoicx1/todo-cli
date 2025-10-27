@@ -21,6 +21,8 @@ from models.task import Task
 from utils.tag_parser import parse_tags
 from config import validation, ai as ai_config
 from debug_logger import debug_log
+from services.notes import FileNoteRepository
+from config import DEFAULT_NOTES_DIR
 
 
 # Global AppState reference (set by agent initialization)
@@ -62,14 +64,12 @@ def _find_task_by_id(task_id: int) -> Optional[Task]:
 def _save_tasks():
     """Save tasks to file after modification"""
     from config import DEFAULT_TASKS_FILE
-    from rich.console import Console
 
     state = _get_state()
     debug_log.info(f"[AI_TOOLS] _save_tasks() called - {len(state.tasks)} tasks in state")
     debug_log.debug(f"[AI_TOOLS] Task IDs in state: {sorted([t.id for t in state.tasks])}")
 
-    console = Console()
-    state.save_to_file(str(DEFAULT_TASKS_FILE), console)
+    state.save_to_file(str(DEFAULT_TASKS_FILE), None)
     debug_log.info(f"[AI_TOOLS] _save_tasks() completed")
 
 
@@ -193,6 +193,12 @@ def create_task(
         if comment:
             result += f"\n   Comment: {comment}"
 
+        try:
+            # Switch UI context to tasks so user sees the new task
+            state.entity_mode = 'tasks'
+            state.page = 0
+        except Exception:
+            pass
         return result
 
         # Generate next ID
@@ -749,5 +755,375 @@ def get_all_tools():
         search_tasks,
         get_task_details,
         get_task_statistics,
+        # Notes tools
+        create_note,
+        edit_note,
+        link_note,
+        unlink_note,
+        delete_note,
+        search_notes,
+        get_note_details,
+        get_linked_notes_for_task,
+        # Advanced helpers
+        get_note_body,
+        convert_note_to_task,
+        append_note_to_task,
+        open_note_in_editor,
     ]
+
+
+# ============================================================================
+# NOTES TOOLS
+# ============================================================================
+
+def _notes_repo() -> FileNoteRepository:
+    return FileNoteRepository(DEFAULT_NOTES_DIR)
+
+
+def _parse_csv_ints(value: str) -> List[int]:
+    res: List[int] = []
+    for part in (value or "").replace(",", " ").split():
+        try:
+            res.append(int(part))
+        except Exception:
+            pass
+    return res
+
+
+def _parse_csv_tags(value: str) -> List[str]:
+    return [t.strip().lower() for t in (value or "").replace(",", " ").split() if t.strip()]
+
+
+def _excerpt(text: str, n: int = 160) -> str:
+    s = (text or "").strip().replace("\r", "")
+    if not s:
+        return "(empty)"
+    line = next((ln for ln in s.splitlines() if ln.strip()), "")
+    return (line[:n] + ("…" if len(line) > n else "")) or "(empty)"
+
+
+@tool
+def create_note(title: str, body_md: str = "", tags: str = "", task_ids: str = "") -> str:
+    """
+    Create a new note and optionally link it to tasks.
+
+    Args:
+        title: Note title (required)
+        body_md: Markdown body (optional)
+        tags: Space/comma separated tags (optional)
+        task_ids: Space/comma separated task IDs to link (optional)
+
+    Returns: Success message with note id and excerpt
+    """
+    try:
+        repo = _notes_repo()
+        note = repo.create(
+            title=title,
+            body_md=body_md or "",
+            tags=_parse_csv_tags(tags),
+            task_ids=_parse_csv_ints(task_ids),
+        )
+        state = _get_state()
+        try:
+            from debug_logger import debug_log
+            before = len(getattr(state, 'notes', []))
+            debug_log.info(f"[AI_TOOLS] create_note() created id={note.id[:8]} title='{note.title}' (state had {before} notes)")
+        except Exception:
+            pass
+        state.refresh_notes_from_disk()
+        # Switch to notes view in UI
+        try:
+            state.entity_mode = 'notes'
+            state.page = 0
+        except Exception:
+            pass
+        try:
+            from debug_logger import debug_log
+            after = len(getattr(state, 'notes', []))
+            debug_log.info(f"[AI_TOOLS] create_note() state refresh complete (now {after} notes)")
+        except Exception:
+            pass
+        return f"✅ Created note {note.id[:8]}: {note.title} — {_excerpt(note.body_md)}"
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] create_note() failed: {e}", exception=e)
+        return f"❌ Error: Failed to create note - {e}"
+
+
+@tool
+def edit_note(note_id: str, field: str, value: str, mode: str = "replace") -> str:
+    """
+    Edit a note field or content.
+
+    Args:
+        note_id: Note id or prefix
+        field: one of: title, tags, body, add_task, remove_task
+        value: new value (for tags: space/comma separated; for body: text)
+        mode: for body - "replace" (default) or "append"
+
+    Returns: Success message
+    """
+    try:
+        repo = _notes_repo()
+        note = repo.get(note_id)
+        if not note:
+            return f"❌ Error: Note {note_id} not found"
+        field_l = (field or "").strip().lower()
+        if field_l == "title":
+            note.title = value.strip()
+        elif field_l == "tags":
+            # Support bulk add/remove with +tag / -tag tokens; otherwise replace
+            raw = (value or "").strip()
+            tokens = [t.strip() for t in raw.replace(",", " ").split() if t.strip()]
+            if any(t.startswith(('+', '-')) for t in tokens):
+                # Start from current tags
+                tagset = {t for t in (note.tags or [])}
+                for tok in tokens:
+                    if tok.startswith('+'):
+                        t = tok[1:].strip().lower()
+                        if t:
+                            tagset.add(t)
+                    elif tok.startswith('-'):
+                        t = tok[1:].strip().lower()
+                        if t in tagset:
+                            tagset.remove(t)
+                note.tags = sorted(tagset)
+            else:
+                note.tags = _parse_csv_tags(raw)
+        elif field_l == "body":
+            if (mode or "").lower() == "append":
+                note.body_md = (note.body_md or "") + ("\n" if note.body_md else "") + value
+            else:
+                note.body_md = value
+        elif field_l == "add_task":
+            for tid in _parse_csv_ints(value):
+                repo.link_task(note, tid)
+        elif field_l == "remove_task":
+            for tid in _parse_csv_ints(value):
+                repo.unlink_task(note, tid)
+        else:
+            return f"❌ Error: Invalid field '{field}'. Valid: title, tags, body, add_task, remove_task"
+        # Persist changes
+        repo.update(note)
+        _get_state().refresh_notes_from_disk()
+        return f"### ✅ Note Updated\n- id: `{note.id[:8]}`\n- field: `{field_l}`"
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] edit_note() failed: {e}", exception=e)
+        return f"❌ Error: Failed to edit note - {e}"
+
+
+@tool
+def link_note(note_id: str, task_id: int) -> str:
+    """Link a note to a task (idempotent)."""
+    try:
+        repo = _notes_repo()
+        note = repo.get(note_id)
+        if not note:
+            return f"❌ Error: Note {note_id} not found"
+        repo.link_task(note, task_id)
+        _get_state().refresh_notes_from_disk()
+        return f"### ✅ Linked\n- note: `{note.id[:8]}`\n- task: `#{task_id}`"
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] link_note() failed: {e}", exception=e)
+        return f"❌ Error: Failed to link note - {e}"
+
+
+@tool
+def unlink_note(note_id: str, task_id: int) -> str:
+    """Unlink a note from a task (idempotent)."""
+    try:
+        repo = _notes_repo()
+        note = repo.get(note_id)
+        if not note:
+            return f"❌ Error: Note {note_id} not found"
+        repo.unlink_task(note, task_id)
+        _get_state().refresh_notes_from_disk()
+        return f"### ✅ Unlinked\n- note: `{note.id[:8]}`\n- task: `#{task_id}`"
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] unlink_note() failed: {e}", exception=e)
+        return f"❌ Error: Failed to unlink note - {e}"
+
+
+@tool
+def delete_note(note_id_prefix: str, force: bool = False) -> str:
+    """Delete notes by id prefix. Requires >=5 chars or force=True for short prefixes."""
+    try:
+        if len(note_id_prefix or "") < 5 and not force:
+            return "❌ Error: Prefix too short. Use at least 5 chars or set force=True"
+        repo = _notes_repo()
+        ok = repo.delete(note_id_prefix)
+        _get_state().refresh_notes_from_disk()
+        return (f"### ✗ Deleted\n- prefix: `{note_id_prefix}`" if ok else f"### ℹ️ No notes deleted\n- prefix: `{note_id_prefix}`")
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] delete_note() failed: {e}", exception=e)
+        return f"❌ Error: Failed to delete note - {e}"
+
+
+@tool
+def search_notes(query: str = "", task_id: int | None = None, tag: str = "") -> str:
+    """Search notes by text, and optionally filter by task_id or tag. Returns a short list."""
+    try:
+        repo = _notes_repo()
+        notes = repo.list_all()
+        if task_id is not None:
+            notes = [n for n in notes if task_id in (n.task_ids or [])]
+        if tag:
+            t = tag.strip().lower()
+            notes = [n for n in notes if t in (n.tags or [])]
+        q = (query or "").strip().lower()
+        if q:
+            notes = [n for n in notes if (q in (n.title or '').lower()) or (q in (n.body_md or '').lower()) or any(q in t for t in (n.tags or []))]
+        if not notes:
+            return "No notes found"
+        lines = ["### 🔎 Notes"]
+        for n in notes[:20]:
+            lines.append(f"• `{n.id[:8]}` | {n.title} | tags: {', '.join(n.tags)} | tasks: {' '.join('#'+str(t) for t in n.task_ids[:5])} | {_excerpt(n.body_md, 60)}")
+        return "\n".join(lines)
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] search_notes() failed: {e}", exception=e)
+        return f"❌ Error: Failed to search notes - {e}"
+
+
+@tool
+def get_note_details(note_id: str) -> str:
+    """Get full note details including linked tasks and first 30 lines of body."""
+    try:
+        repo = _notes_repo()
+        n = repo.get(note_id)
+        if not n:
+            return f"❌ Error: Note {note_id} not found"
+        lines = [f"### 📝 Note `{n.id[:8]}`", n.title]
+        if n.tags:
+            lines.append(f"- tags: {', '.join(n.tags)}")
+        if n.task_ids:
+            lines.append(f"- linked tasks: {' '.join('#'+str(t) for t in n.task_ids)}")
+        body = (n.body_md or '').splitlines()[:30]
+        if body:
+            lines.append("\n---")
+            lines.extend(body)
+        return "\n".join(lines)
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] get_note_details() failed: {e}", exception=e)
+        return f"❌ Error: Failed to get note details - {e}"
+
+
+@tool
+def get_linked_notes_for_task(task_id: int) -> str:
+    """List notes linked to a specific task (by task_id)."""
+    try:
+        repo = _notes_repo()
+        notes = repo.list_by_task(task_id)
+        if not notes:
+            return f"No notes linked to task #{task_id}"
+        lines = [f"### 🧷 Notes for task #{task_id}"]
+        for n in notes[:20]:
+            lines.append(f"• `{n.id[:8]}` | {n.title} | tags: {', '.join(n.tags)} | {_excerpt(n.body_md, 60)}")
+        return "\n".join(lines)
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] get_linked_notes_for_task() failed: {e}", exception=e)
+        return f"❌ Error: Failed to list notes - {e}"
+
+
+@tool
+def get_note_body(note_id: str) -> str:
+    """Return the full body text of a note (for summarization by the agent)."""
+    try:
+        repo = _notes_repo()
+        n = repo.get(note_id)
+        if not n:
+            return f"❌ Error: Note {note_id} not found"
+        return n.body_md or "(empty)"
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] get_note_body() failed: {e}", exception=e)
+        return f"❌ Error: Failed to read note - {e}"
+
+
+@tool
+def convert_note_to_task(note_id: str, priority: int = 2, tags: str = "") -> str:
+    """
+    Create a task from a note (name=title, description=body). Links note to new task.
+
+    Args:
+        note_id: Note id or prefix
+        priority: Task priority (1..3)
+        tags: Optional space/comma separated tags for the new task (defaults to note tags)
+    """
+    try:
+        repo = _notes_repo()
+        n = repo.get(note_id)
+        if not n:
+            return f"❌ Error: Note {note_id} not found"
+        state = _get_state()
+        name = n.title or "Untitled"
+        comment = f"from note {n.id[:8]}"
+        tag_list = _parse_csv_tags(tags) if (tags or "").strip() else list(n.tags or [])
+        tag_str = ",".join(tag_list)
+        # Use existing add_task pathway via state
+        state.add_task(name=name, comment=comment, description=n.body_md or "", priority=max(1, min(3, priority)), tag=tag_str)
+        try:
+            # Switch UI to tasks view to show the newly created task
+            state.entity_mode = 'tasks'
+            state.page = 0
+        except Exception:
+            pass
+        new_task_id = state.tasks[-1].id if state.tasks else None
+        if new_task_id is not None:
+            repo.link_task(n, new_task_id)
+            state.refresh_notes_from_disk()
+            _save_tasks()
+            return f"### ✅ Created task from note\n- note: `{n.id[:8]}`\n- task: `#{new_task_id}`\n- name: {name}"
+        return "❌ Error: Failed to create task"
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] convert_note_to_task() failed: {e}", exception=e)
+        return f"❌ Error: Failed to convert note - {e}"
+
+
+@tool
+def append_note_to_task(note_id: str, task_id: int, header: str = "") -> str:
+    """
+    Append a note's body to a task's description (with optional header).
+    """
+    try:
+        repo = _notes_repo()
+        n = repo.get(note_id)
+        if not n:
+            return f"❌ Error: Note {note_id} not found"
+        task = _find_task_by_id(task_id)
+        if not task:
+            return f"❌ Error: Task #{task_id} not found"
+        block = n.body_md or ""
+        if not block:
+            return f"ℹ️  Note {note_id} is empty; nothing to append"
+        prefix = f"\n\n## {header}\n" if header else "\n\n## Note\n"
+        task.description = (task.description or "") + prefix + block
+        try:
+            task.updated_at = datetime.now().isoformat()
+        except Exception:
+            pass
+        _save_tasks()
+        # Ensure link exists for traceability
+        repo.link_task(n, task_id)
+        _get_state().refresh_notes_from_disk()
+        return f"### ✅ Appended note to task\n- note: `{n.id[:8]}`\n- task: `#{task_id}`"
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] append_note_to_task() failed: {e}", exception=e)
+        return f"❌ Error: Failed to append note - {e}"
+
+
+@tool
+def open_note_in_editor(note_id: str) -> str:
+    """Open a note in the local editor ($VISUAL/$EDITOR) and wait for close."""
+    try:
+        repo = _notes_repo()
+        n = repo.get(note_id)
+        if not n:
+            return f"❌ Error: Note {note_id} not found"
+        from utils.editor import open_in_editor
+        from config import DEFAULT_EDITOR_CMD
+        path = repo._note_path(n.id, n.title)
+        rc = open_in_editor(str(path), DEFAULT_EDITOR_CMD)
+        _get_state().refresh_notes_from_disk()
+        return f"### 📝 Opened in editor\n- note: `{n.id[:8]}`\n- exit code: {rc}"
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] open_note_in_editor() failed: {e}", exception=e)
+        return f"❌ Error: Failed to open note - {e}"
 

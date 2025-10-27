@@ -51,20 +51,62 @@ class StatusBar(Static):
         line1 = (
             f"Page [cyan bold]{current_page}[/cyan bold][dim]/{total_pages}[/dim]  •  "
             f"[bold]{shown}[/bold][dim]/{total_filtered}[/dim] showing  •  "
-            f"[magenta]{state.view_mode}[/magenta]  •  "
+            f"mode=[magenta]{getattr(state, 'entity_mode', 'tasks')}[/magenta]  •  "
+            f"view=[magenta]{state.view_mode}[/magenta]  •  "
             f"[blue]{order_arrow} {state.sort}[/blue] [dim]({state.sort_order})[/dim]"
         )
+        # If in notes mode, append selected note title when available
+        try:
+            if getattr(state, 'entity_mode', 'tasks') == 'notes':
+                from textual_widgets.note_table import NoteTable  # type: ignore
+                tbl = self.app.query_one(NoteTable)
+                nid = tbl.get_selected_note_id()
+                if nid:
+                    # Find title via state
+                    note = next((n for n in getattr(state, 'notes', []) if n.id.startswith(nid)), None)
+                    if note and getattr(note, 'title', ''):
+                        title = (note.title or '')
+                        if len(title) > 30:
+                            title = title[:30] + '…'
+                        line1 += f"  •  note: [dim]{title}[/dim]"
+        except Exception:
+            pass
 
-        # Line 2: Task statistics
-        line2 = (
-            f"[cyan bold]{total}[/cyan bold] tasks  •  "
-            f"[green bold]{completed}[/green bold] done  •  "
-            f"[yellow bold]{incomplete}[/yellow bold] todo"
-        )
+        # Append current focus target
+        try:
+            focused = self.app.focused
+            focus_id = getattr(focused, 'id', '') or focused.__class__.__name__
+            # Reduce verbosity for known ids
+            friendly = (
+                'tasks' if focus_id in ('task_table',) else
+                'notes' if focus_id in ('note_table',) else
+                'ai chat' if focus_id in ('ai_chat_panel',) else
+                'ai input' if focus_id in ('ai_input',) else
+                'command' if focus_id in ('command_input',) else
+                focus_id
+            )
+            if friendly:
+                line1 += f"  •  focus: [dim]{friendly}[/dim]"
+        except Exception:
+            pass
 
-        # Add filter info if active
-        if state.filter != "none":
-            line2 += f"  •  Filter: [yellow]{state.filter}[/yellow]"
+        # Line 2: Task/Notes statistics
+        if getattr(state, 'entity_mode', 'tasks') == 'notes':
+            line2 = f"[cyan bold]{len(getattr(state, 'notes', []))}[/cyan bold] notes"
+            tid_filter = getattr(state, 'notes_task_id_filter', None)
+            q = getattr(state, 'notes_query', '') or ''
+            if tid_filter is not None:
+                line2 += f"  •  filter: task=#{tid_filter}"
+            if q.strip():
+                line2 += f"  •  search: [yellow]{q.strip()}[/yellow]"
+        else:
+            line2 = (
+                f"[cyan bold]{total}[/cyan bold] tasks  •  "
+                f"[green bold]{completed}[/green bold] done  •  "
+                f"[yellow bold]{incomplete}[/yellow bold] todo"
+            )
+            if state.filter != "none":
+                line2 += f"  •  Filter: [yellow]{state.filter}[/yellow]"
 
         # Combine lines
         status_markup = f"{line1}\n{line2}"

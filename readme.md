@@ -69,7 +69,11 @@ python main.py --ui textual  # Modern UI with AI chat
 python main.py --ui rich     # Classic REPL UI
 ```
 
-### Requirements
+### Version
+- Show CLI version: python main.py --version or python main.py -v
+- The Textual UI header shows the current version appended to the title (e.g., Todo CLI (Textual) � v0.1.0).
+- Version policy and release flow: see VERSION.md.
+- Tracked in files: VERSION (single source of truth), CHANGELOG.md.### Requirements
 - Python 3.8+
 - Dependencies listed in `requirements.txt`
 - For AI features: OpenAI API key in `.env` file (optional - local insights work without it!)
@@ -180,6 +184,24 @@ tags                   # List all unique tags
 insights               # Show comprehensive task analysis
 suggest                # Get smart recommendations
 help                   # Show full command list
+```
+
+#### Notes
+```bash
+mode notes             # Switch to notes list (toggle back with 'mode tasks' or 'm' in Textual)
+notes [task_id|query]  # List notes (for a task) or search; sets Notes mode with paging (use next/prev)
+notes clear            # Clear notes filters and show all
+note new --title "..." [--task 12] [--tag x]
+note edit <note_id>    # Edit note by id prefix (first 8+ chars)
+note show <note_id>    # Show a note summary with excerpt
+note link <note_id> <task_id>    # Link note to task
+note unlink <note_id> <task_id>  # Unlink note from task
+note delete <note_id>  # Delete by id prefix (confirmation in Textual: Delete key)
+note duplicate <note_id> [--title "..."] [--task 12]  # Duplicate a note
+
+# Shortcuts (Rich CLI):
+#  Ctrl+N  Create a note for the selected task (after 'show <id>')
+#  Ctrl+O  Open latest note for the selected task
 ```
 
 #### System Commands
@@ -320,6 +342,37 @@ Ctrl+Shift+C
 - **Filtering Advice**: "Show me all PSDC tasks"
 - **Formatting Requests**: "Display my tasks as a timeline"
 
+### Using AI with Notes
+You can create, edit, link, search, and view notes with the GPT agent. Examples:
+```bash
+? create a note titled "Meeting minutes" linked to task 12 with tags backend,api
+? append "Decision: use OAuth2" to note abcd1234  # (agent uses edit_note body append)
+? search notes "webasto" and link the first to task 3
+? get note details abcd1234
+? convert note abcd1234 into a task with priority 1 and tags backend,api
+? open note abcd1234 in editor
+```
+Notes guidance:
+- Use notes for longer text (minutes/designs). Use task comment for short context.
+- When editing note tags, you can use +tag to add and -tag to remove; otherwise tags are replaced.
+
+### Notes Mode (Textual UI)
+
+The Textual UI provides a **dual-mode interface** for managing both tasks and notes:
+
+- **Switch modes**: Press `m` key or type `mode notes` / `mode tasks`
+- **Mode-aware `a` key**:
+  - In tasks mode → Opens task add form
+  - In notes mode → Opens note create editor
+- **Mode-aware `e` key**:
+  - In tasks mode → Edits selected task
+  - In notes mode → Edits selected note
+
+**Note Creation UX** (Improved Oct 2025):
+- Press `a` in notes mode → See "Create Note" header
+- Press Esc to cancel → No empty note created (clean cancel)
+- Press Ctrl+S to save → Note created and selected
+
 ### Conversation Storage
 - **Location**: `~/.todo_cli_ai_history.json`
 - **Format**: JSON with role, content, timestamp, token count
@@ -354,7 +407,7 @@ Ctrl+Shift+C
 ### Both UIs
 1. **Filter by tag** - Organize work by project: `filter tag:project-name`
 2. **Advanced filters** - Use operators: `f priority=1 status=undone`
-3. **Command shortcuts** - Use single letters: `a` (add), `e` (edit), `x` (done)
+3. **Command shortcuts** - Use single letters: `a` (add - mode-aware), `e` (edit - mode-aware), `x` (done)
 4. **Regular insights** - Run `insights` or `i` daily to stay on track
 5. **Inline editing** - Type `edit 5` to quickly modify task #5
 6. **Multi-tag filters** - Use `+` for AND: `f tag=psdc+webasto`
@@ -445,7 +498,13 @@ This is a personal project, but suggestions and improvements are welcome!
 
 **Recent Improvements:**
 
-**v2.1.0 - October 2025 - Stability & Performance Update** 🆕
+**v0.1.1 - Mode-Aware Commands & UX Fixes (Oct 26, 2025)** 🆕
+- ✅ Mode-aware `add` and `edit` commands (respect tasks/notes mode)
+- ✅ Note creation UX: proper "Create Note" header, clean cancel behavior
+- ✅ Fixed TaskForm critical bug (AttributeError crash)
+- ✅ 17 new tests for mode-aware routing
+
+**v2.1.0 - October 2025 - Stability & Performance Update**
 - ✅ **FIXED**: Command prompt visibility (now visible by default - no more confusion!)
 - ✅ **FIXED**: Detail view task selection (edit/delete now targets correct task)
 - ✅ **FIXED**: Event bubbling (commands execute exactly once)

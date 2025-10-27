@@ -2,6 +2,15 @@
 
 ## 🎯 Command Palette with Dropdown Filtering
 
+### Version
+Show current app version from the CLI:
+```bash
+python main.py --version
+# or
+python main.py -v
+```
+The Textual UI header also appends the version to the title (e.g., `Todo CLI (Textual) • v0.1.0`).
+
 ### How It Works
 
 The command palette uses **prompt_toolkit's completion system** to show a dropdown list of all available commands with real-time filtering.
@@ -450,3 +459,59 @@ All commands now provide helpful error messages when used incorrectly:
 - Column layout: ID | Age | Prio | Tags | Task
 - Sort: sort age [asc|desc] (asc=youngest first)
 - Filter: ilter age>=3d, ilter age<=2h, ilter age>=30m`n- Age is derived from created_at and cannot be set directly
+ 
+---
+ 
+## 🔄 Mode-Aware Commands (Textual UI)
+
+The Textual UI supports **dual-mode operation** for tasks and notes. The `add` and `edit` commands automatically adapt based on your current mode:
+
+### Switching Modes
+```bash
+mode tasks                   # Switch to tasks view
+mode notes                   # Switch to notes view
+m                           # Keyboard shortcut: toggle mode
+```
+
+### Add Command (Mode-Aware)
+```bash
+# In TASKS mode:
+add                         # Opens task form (⌨️ shortcut: a)
+
+# In NOTES mode:
+add                         # Opens note editor with "Create Note" header (⌨️ shortcut: a)
+```
+
+### Edit Command (Mode-Aware)
+```bash
+# In TASKS mode:
+edit 5                      # Edits task #5 (⌨️ shortcut: e)
+
+# In NOTES mode:
+edit abc12345               # Edits note by ID prefix (⌨️ shortcut: e)
+```
+
+**Note:** The `remove`, `open` (Enter), and `delete` (d) commands are also mode-aware.
+
+---
+
+## 📝 Notes (Offline)
+- Files live in `notes/` as Markdown with YAML front matter (id, title, tags, task_ids, timestamps).
+- Link notes to tasks via `task_ids` in the front matter (managed by commands).
+
+Commands
+```bash
+mode notes                     # Switch to notes list
+notes [task_id|query]          # List/search notes (or for a task); sets Notes mode with paging (use next/prev)
+notes clear                    # Clear notes filters and show all
+note new --title "..." [--task 12] [--tag x]
+note edit <note_id_prefix>     # Open in $EDITOR
+note link <note_id> <task_id>  # Link/unlink
+note unlink <note_id> <task_id>
+note delete <note_id_prefix>   # Delete notes by id prefix
+note duplicate <note_id_prefix> [--title '...'] [--task 12]
+```
+
+Shortcuts (Rich CLI)
+- Ctrl+N: Create a new note linked to selected task (after `show <id>`)
+- Ctrl+O: Open latest note for selected task (creates one if none)

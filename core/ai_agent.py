@@ -136,13 +136,27 @@ User question: {question}"""
             result = self.agent.invoke({"messages": [{"role": "user", "content": full_prompt}]})
             debug_log.debug(f"[AI_AGENT] Agent invoke completed - result keys: {list(result.keys()) if isinstance(result, dict) else 'not a dict'}")
 
-            # Log tool calls if present
+            # Collect unique tool calls (for UI hinting)
+            # Deduplicate to avoid showing same tool multiple times
+            tool_logs: list[str] = []
+            seen_tools: set[str] = set()  # Track unique tool names
+
             if "messages" in result:
                 for msg in result["messages"]:
-                    if hasattr(msg, "tool_calls") and msg.tool_calls:
+                    # Only collect from AIMessage (not ToolMessage or other types)
+                    # Check for 'type' attribute to filter message types
+                    msg_type = getattr(msg, "type", None)
+                    is_ai_message = msg_type == "ai" or (msg_type is None and hasattr(msg, "tool_calls"))
+
+                    if is_ai_message and hasattr(msg, "tool_calls") and msg.tool_calls:
                         for tool_call in msg.tool_calls:
                             tool_name = getattr(tool_call, "name", None) or tool_call.get("name", "unknown")
-                            debug_log.info(f"[AI_AGENT] 🔧 Tool executed: {tool_name}")
+
+                            # Only log each unique tool once
+                            if tool_name not in seen_tools:
+                                seen_tools.add(tool_name)
+                                debug_log.info(f"[AI_AGENT] 🔧 Tool executed: {tool_name}")
+                                tool_logs.append(f"[dim]> {tool_name}[/dim]")
 
             # Extract response from result
             # LangChain 1.0 returns messages in state
@@ -154,8 +168,12 @@ User question: {question}"""
                 debug_log.error(f"[AI_AGENT] No messages in result - result type: {type(result)}")
                 response = "No response generated"
 
-            # Call streaming callback if provided (simulated streaming)
+            # Call streaming callback if provided (prelude with tool logs + simulated streaming)
             if streaming_callback and response:
+                if tool_logs:
+                    prelude = "\n".join(tool_logs) + "\n"
+                    for ch in prelude:
+                        streaming_callback(ch)
                 debug_log.debug(f"[AI_AGENT] Calling streaming callback - {len(response)} chars")
                 for char in response:
                     streaming_callback(char)
@@ -204,12 +222,28 @@ User question: {question}"""
         done = sum(1 for t in self.state.tasks if t.done)
         todo = total - done
 
-        return f"""Current Workspace Context:
-- Total tasks: {total}
-- Done: {done} | Todo: {todo}
-- Active filter: {self.state.filter}
-- Current view: {self.state.view_mode}
-- Page: {self.state.page + 1}"""
+        # Notes context
+        notes_total = len(getattr(self.state, 'notes', [])) if hasattr(self.state, 'notes') else 0
+        notes_mode = getattr(self.state, 'entity_mode', 'tasks') == 'notes'
+        notes_filter = getattr(self.state, 'notes_query', '') or ''
+        notes_task = getattr(self.state, 'notes_task_id_filter', None)
+
+        ctx = [
+            "Current Workspace Context:",
+            f"- Total tasks: {total}",
+            f"- Done: {done} | Todo: {todo}",
+            f"- Active filter: {self.state.filter}",
+            f"- Current view: {self.state.view_mode}",
+            f"- Page: {self.state.page + 1}",
+            f"- Total notes: {notes_total}",
+        ]
+        if notes_mode:
+            ctx.append("- Notes mode: active")
+            if notes_task is not None:
+                ctx.append(f"- Notes filter: task=#{notes_task}")
+            if notes_filter:
+                ctx.append(f"- Notes search: {notes_filter}")
+        return "\n".join(ctx)
 
     def _format_chat_history(self, messages: list) -> str:
         """
@@ -244,9 +278,9 @@ User question: {question}"""
         Returns:
             System prompt string
         """
-        return """You are an intelligent task management assistant with access to tools.
+        return """You are an intelligent task & notes assistant with access to tools.
 
-You have access to the following tools to help manage tasks:
+You have access to the following tools to help manage tasks and notes:
 1. **create_task** - Create new tasks with name, priority (1=HIGH, 2=MEDIUM, 3=LOW), tag, description, comment
 2. **edit_task** - Modify existing task fields (name, priority, tag, description, comment)
 3. **complete_task** - Mark tasks as done
@@ -256,15 +290,29 @@ You have access to the following tools to help manage tasks:
 7. **get_task_details** - View full details of a specific task
 8. **get_task_statistics** - Get workspace summary and statistics
 
+Notes tools:
+9. **create_note** - Create a new note (title, body_md, tags, task_ids)
+10. **edit_note** - Edit a note (title, tags, body, add_task, remove_task) with optional mode=append for body
+11. **link_note** / **unlink_note** - Link or unlink a note to/from a task
+12. **delete_note** - Delete notes by id prefix (requires >=5 chars or force=True)
+13. **search_notes** - Search notes by text, filter by task or tag
+14. **get_note_details** - View note details with excerpt and links
+15. **get_linked_notes_for_task** - List notes linked to a task
+
 Guidelines:
 - Be concise but helpful
 - Use tools when appropriate to accomplish user requests
 - Confirm actions taken (e.g., "Created task #5: Code review")
 - Format responses with markdown for clarity
 - If user asks to create/edit/complete/delete tasks, use the tools
+- If user asks to save or retrieve longer text (meeting minutes, design decisions), prefer notes (create_note / edit_note) and link to relevant tasks
 - If user asks about tasks, use search_tasks or get_task_statistics
+- If user asks about notes, use search_notes or get_note_details
+ - When editing note tags, you may accept "+tag" to add and "-tag" to remove; otherwise replace the tag list
 - For specific task details, use get_task_details
+- For specific note details, use get_note_details
 - Always provide task IDs when mentioning specific tasks
+ - Always provide note IDs (first 8 chars) when mentioning notes
 
 CRITICAL - Parameter Extraction Rules:
 When creating or editing tasks, you MUST extract ALL information from user requests:
@@ -278,6 +326,7 @@ When creating or editing tasks, you MUST extract ALL information from user reque
 2. **Description vs Comment**:
    - description: Detailed technical requirements, specifications, acceptance criteria
    - comment: Short contextual notes, references, related information
+   - For long content (minutes, in-depth writeups) use create_note/edit_note instead of comment
    - If user provides detailed requirements/specs → use description parameter
    - If user provides quick notes/context → use comment parameter
 

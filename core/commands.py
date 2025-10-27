@@ -1,15 +1,21 @@
-﻿from typing import Optional
-from rich.console import Console
-from rich.prompt import Prompt
-from rich.panel import Panel
+﻿from typing import Optional, Any
+
+
+
 from core.state import AppState
+from services.notes import FileNoteRepository
+from config import DEFAULT_NOTES_DIR, DEFAULT_EDITOR_CMD
+from utils.editor import open_in_editor
 import shlex
 from textwrap import dedent
 from datetime import datetime
-from assistant import Assistant
-from ui.feedback import (
+try:
+    from assistant import Assistant
+except Exception:
+    Assistant = None  # type: ignore
+from ui.min_feedback import (
     confirm,
-    OperationSummary
+    OperationSummary,
 )
 from utils.tag_parser import parse_tags
 from utils.validators import validate_priority, sanitize_comment, sanitize_description, clamp_priority
@@ -77,12 +83,9 @@ gpt = None
 
 
 def _get_or_create_assistant(state):
-    """
-    Get or create global assistant instance with state.
-
-    Lazy initialization ensures state is available before agent initialization.
-    """
     global gpt
+    if Assistant is None:
+        return None
     if gpt is None:
         gpt = Assistant(state=state)
     return gpt
@@ -150,7 +153,7 @@ def parse_task_ids(id_args: list[str]) -> list[int]:
     return sorted(list(ids))
 
 
-def parse_command(command: str, state: AppState, console: Console) -> Optional[tuple[str, list[str]]]:
+def parse_command(command: str, state: AppState, console: Any) -> Optional[tuple[str, list[str]]]:
     parts = shlex.split(command.strip())
     if not parts:
         state.messages = []
@@ -168,7 +171,7 @@ def parse_command(command: str, state: AppState, console: Console) -> Optional[t
     return cmd, parts
 
 
-def handle_add(command_arguments: list[str], state: AppState, console: Console) -> None:
+def handle_add(command_arguments: list[str], state: AppState, console: Any) -> None:
     """
     Parses arguments from the 'add' command and adds a new task to the application state.
 
@@ -245,7 +248,7 @@ def handle_add(command_arguments: list[str], state: AppState, console: Console) 
     state.messages.append(f"[green]?[/green] Added task: {name}")
 
 
-def handle_done(command_arguments: list[str], state: AppState, console: Console) -> None:
+def handle_done(command_arguments: list[str], state: AppState, console: Any) -> None:
     """
     Marks the specified task(s) as done based on the task ID(s).
     Supports bulk operations: done 1 2 3, done 1-5, done 1,3,5-8
@@ -307,7 +310,7 @@ def handle_done(command_arguments: list[str], state: AppState, console: Console)
         state.messages.append(f"[red]?[/red] Tasks not found: {', '.join(map(str, not_found))}")
 
 
-def handle_undone(command_arguments: list[str], state: AppState, console: Console) -> None:
+def handle_undone(command_arguments: list[str], state: AppState, console: Any) -> None:
     """
     Unmarks the specified task(s) (sets 'done' to False) based on the task ID(s).
     Supports bulk operations: undone 1 2 3, undone 1-5, undone 1,3,5-8
@@ -367,7 +370,7 @@ def handle_undone(command_arguments: list[str], state: AppState, console: Consol
         state.messages.append(f"[red]?[/red] Tasks not found: {', '.join(map(str, not_found))}")
 
 
-def handle_command(command: str, state: AppState, console: Console) -> None:
+def handle_command(command: str, state: AppState, console: Any) -> None:
     # Log command received
     debug_log.info(f"[COMMANDS] Received command: '{command}'")
     _log_state_snapshot("BEFORE", state)
@@ -538,8 +541,9 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
 
     elif cmd == "next":
         debug_log.debug(f"[next] Current page: {state.page}, page_size: {state.page_size}, total tasks: {len(state.tasks)}")
-        # Ensure next only works if there are more tasks to show
-        if (state.page + 1) * state.page_size < len(state.tasks):
+        # Ensure next only works if there are more rows to show (respect mode)
+        total_items = len(state.tasks) if getattr(state, 'entity_mode', 'tasks') == 'tasks' else len(getattr(state, 'notes', []))
+        if (state.page + 1) * state.page_size < total_items:
             state.page += 1
             debug_log.info(f"[next] Moved to page {state.page}")
             state.messages.append("→ Next page")
@@ -662,6 +666,193 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
             debug_log.error(f"[filter] Filter parsing error: {e}", exception=e)
             state.messages.append(f"[red]?[/red] Filter error: {e}")
 
+   
+    # -------------------- Notes & Mode --------------------
+    elif cmd == "mode":
+        if len(parts) >= 2 and parts[1] in ("tasks", "notes"):
+            old = state.entity_mode
+            state.entity_mode = parts[1]
+            state.messages.append(f"[~] Mode: {old} → {state.entity_mode}")
+        else:
+            state.messages.append('[red]?[/red] Usage: mode tasks|notes')
+
+    elif cmd == "notes":
+        # Switch to notes mode and set filters for renderer
+        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+        state.refresh_notes_from_disk()
+        state.entity_mode = 'notes'
+        state.page = 0
+        if len(parts) >= 2:
+            arg = ' '.join(parts[1:])
+            if arg.isdigit():
+                state.notes_task_id_filter = int(arg)
+                state.notes_query = ""
+                state.messages.append(f"[~] Showing notes linked to task {arg}")
+            else:
+                if arg.lower() in ("clear", "none", "all"):
+                    state.notes_query = ""
+                    state.notes_task_id_filter = None
+                    state.messages.append("[~] Notes filter cleared")
+                else:
+                    state.notes_query = arg
+                    state.notes_task_id_filter = None
+                    state.messages.append(f"[~] Notes search: '{arg}'")
+        else:
+            state.notes_query = ""
+            state.notes_task_id_filter = None
+        return
+
+    elif cmd == "note":
+        # Subcommands: new|edit|show|link|unlink
+        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+        if len(parts) == 1:
+            state.messages.append('[red]?[/red] Usage: note new|edit|show|link|unlink ...')
+            return
+        sub = parts[1]
+        if sub == "new":
+            # note new [--title "..."] [--task 12] [--tag x]
+            title = ""
+            task_id: int | None = None
+            tags: list[str] = []
+            # very light option parsing
+            i = 2
+            while i < len(parts):
+                p = parts[i]
+                if p in ("--title", "-t") and i + 1 < len(parts):
+                    title = parts[i + 1]
+                    i += 2
+                elif p == "--task" and i + 1 < len(parts) and parts[i + 1].isdigit():
+                    task_id = int(parts[i + 1])
+                    i += 2
+                elif p in ("--tag", "-g") and i + 1 < len(parts):
+                    tags.append(parts[i + 1])
+                    i += 2
+                else:
+                    i += 1
+            note = repo.create(title=title or "New Note", tags=tags, task_ids=[task_id] if task_id else [])
+            # open in editor
+            path = repo._note_path(note.id, note.title)
+            open_in_editor(str(path), DEFAULT_EDITOR_CMD)
+            state.refresh_notes_from_disk()
+            state.messages.append(f"[green]✓[/green] Note created: {note.title} ({note.id[:8]})")
+
+        elif sub == "edit" and len(parts) >= 3:
+            note_id = parts[2]
+            # open by id prefix
+            # find matching filename
+            # ensure exists
+            n = repo.get(note_id)
+            if not n:
+                state.messages.append(f"[red]?[/red] Note {note_id} not found")
+                return
+            path = repo._note_path(n.id, n.title)
+            open_in_editor(str(path), DEFAULT_EDITOR_CMD)
+            state.refresh_notes_from_disk()
+            state.messages.append(f"[~] Edited note {n.id[:8]}")
+
+        elif sub == "show" and len(parts) >= 3:
+            note_id = parts[2]
+            n = repo.get(note_id)
+            if not n:
+                state.messages.append(f"[red]?[/red] Note {note_id} not found")
+                return
+            from utils.time import humanize_age
+            age = humanize_age(n.created_at)
+            trefs = ' '.join(f"#{tid}" for tid in n.task_ids)
+            body_preview = (n.body_md or "").strip().splitlines()[:8]
+            panel = "\n".join([
+                f"[bold]{n.title}[/bold]  [dim]{n.id} • {age} • tags: {', '.join(n.tags)}[/dim]",
+                f"linked: {trefs}" if trefs else "linked: (none)",
+                "",
+                *([ln for ln in body_preview] or ["[dim](empty)[/dim]"])
+            ])
+            state.messages.append(panel)
+
+        elif sub in ("link", "unlink") and len(parts) >= 4 and parts[3].isdigit():
+            note_id = parts[2]
+            task_id = int(parts[3])
+            n = repo.get(note_id)
+            if not n:
+                state.messages.append(f"[red]?[/red] Note {note_id} not found")
+                return
+            if sub == "link":
+                repo.link_task(n, task_id)
+                state.messages.append(f"[green]✓[/green] Linked note {n.id[:8]} ↔ task {task_id}")
+            else:
+                repo.unlink_task(n, task_id)
+                state.messages.append(f"[green]✓[/green] Unlinked note {n.id[:8]} ↔ task {task_id}")
+            state.refresh_notes_from_disk()
+        elif sub == "quick" and len(parts) >= 3:
+            # note quick "Title" [--task <id>]
+            title = parts[2]
+            link_task = None
+            i = 3
+            while i < len(parts):
+                p = parts[i]
+                if p == "--task" and i + 1 < len(parts) and parts[i + 1].isdigit():
+                    link_task = int(parts[i + 1])
+                    i += 2
+                else:
+                    i += 1
+            if link_task is None:
+                filtered = state.get_filter_tasks(state.tasks)
+                if filtered:
+                    link_task = filtered[0].id
+            note = repo.create(title=title, task_ids=[link_task] if link_task else [])
+            # Open in editor (respect env)
+            path = repo._note_path(note.id, note.title)
+            open_in_editor(str(path), DEFAULT_EDITOR_CMD)
+            state.refresh_notes_from_disk()
+            state.entity_mode = 'notes'
+            state.page = 0
+            state.messages.append(f"[green]✓[/green] Quick note created: {note.title} ({note.id[:8]})")
+        else:
+            # Delete: note delete <note_id_prefix>; Duplicate: note duplicate <id> [--title] [--task]
+            if sub == "delete" and len(parts) >= 3:
+                note_id = parts[2]
+                force = any(p == "--force" for p in parts[3:])
+                if len(note_id) < 5 and not force:
+                    state.messages.append("[red]?[/red] Prefix too short. Use at least 5 chars or add --force")
+                    return
+                ok = repo.delete(note_id)
+                state.refresh_notes_from_disk()
+                if ok:
+                    state.messages.append(f"[red]✗[/red] Deleted note(s) matching {note_id}")
+                else:
+                    state.messages.append(f"[yellow]No notes deleted for {note_id}[/yellow]")
+            elif sub == "duplicate" and len(parts) >= 3:
+                src_id = parts[2]
+                src = repo.get(src_id)
+                if not src:
+                    state.messages.append(f"[red]?[/red] Note {src_id} not found")
+                    return
+                # Parse optional args
+                title = f"Copy of {src.title}"
+                link_task: int | None = None
+                i = 3
+                while i < len(parts):
+                    p = parts[i]
+                    if p in ("--title", "-t") and i + 1 < len(parts):
+                        title = parts[i + 1]
+                        i += 2
+                    elif p == "--task" and i + 1 < len(parts) and parts[i + 1].isdigit():
+                        link_task = int(parts[i + 1])
+                        i += 2
+                    else:
+                        i += 1
+                new = repo.create(
+                    title=title,
+                    tags=list(src.tags),
+                    task_ids=[link_task] if link_task is not None else list(src.task_ids),
+                    body_md=src.body_md,
+                )
+                state.refresh_notes_from_disk()
+                state.entity_mode = 'notes'
+                state.page = 0
+                state.messages.append(f"[green]✓[/green] Duplicated note {src.id[:8]} → {new.id[:8]}")
+            else:
+                state.messages.append('[red]?[/red] Usage: note new|edit|show|link|unlink|delete|duplicate ...')
+
     elif cmd == "show":
         debug_log.info(f"[show] Called with args: {parts[1:]}")
 
@@ -716,6 +907,11 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
             return
 
         debug_log.info(f"[show] Found task {task_id} - name='{task.name[:30]}', displaying details")
+        # Mark as selected for quick note actions
+        try:
+            state.selected_task_id = task_id
+        except Exception:
+            pass
 
         # Build rich panel with task details
         # Icons and emojis with ASCII fallback
@@ -805,23 +1001,8 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
         else:
             panel_title = f"[bold {border_color}][ Task #{task.id} ][/bold {border_color}]"
 
-        # Instead of rendering to text, store the panel object directly
-        # This prevents border corruption from text conversion
-        from rich.box import ROUNDED
-
-        panel = Panel(
-            panel_content,
-            title=panel_title,
-            title_align="left",
-            border_style=border_color,
-            padding=(1, 2),
-            expand=False,
-            box=ROUNDED  # Use rounded box for cleaner borders
-        )
-
-        # Store panel as a special message type that will be rendered directly
-        # We'll use a marker to indicate this is a renderable object
-        state.messages.append(("__PANEL__", panel))
+        # Fallback: store plain text instead of Rich panel (no Rich dependency)
+        state.messages.append(f"{panel_title}\n\n{panel_content}")
 
     elif cmd == "tags":
         # Use O(1) tag index instead of O(n) iteration
@@ -835,75 +1016,20 @@ def handle_command(command: str, state: AppState, console: Console) -> None:
             state.messages.append("[~] No tags found.")
 
     elif cmd == "?":
-        # AI Assistant with LangChain agent and memory subcommands
         from ui.ai_renderer import create_streaming_callback
-        from rich.prompt import Confirm
-
-        # Lazy initialization: get or create assistant with state
         gpt = _get_or_create_assistant(state)
-
-        # Check for subcommands
-        if len(parts) > 1:
-            subcmd = parts[1].lower()
-
-            if subcmd == "clear":
-                # Clear conversation history
-                if hasattr(gpt, 'agent') and gpt.agent:
-                    gpt.agent.reset_conversation()
-                    state.messages.append("[green]✅ Conversation history cleared[/green]")
-                else:
-                    state.messages.append("[yellow]⚠️  Agent not available, nothing to clear[/yellow]")
-                return
-
-            elif subcmd == "export":
-                # Export chat to markdown
-                if hasattr(gpt, 'memory') and gpt.memory:
-                    filename = parts[2] if len(parts) > 2 else "chat_export.md"
-                    try:
-                        gpt.memory.export_to_markdown(filename)
-                        state.messages.append(f"[green]✅ Conversation exported to {filename}[/green]")
-                    except Exception as e:
-                        state.messages.append(f"[red]❌ Export failed: {str(e)}[/red]")
-                else:
-                    state.messages.append("[yellow]⚠️  Agent not available[/yellow]")
-                return
-
-            elif subcmd == "memory":
-                # Show memory statistics
-                if hasattr(gpt, 'memory') and gpt.memory:
-                    stats = gpt.memory.get_stats()
-                    state.messages.append(
-                        f"[cyan]💾 Memory Stats:[/cyan]\n"
-                        f"   Messages: {stats['messages']}\n"
-                        f"   Exchanges: {stats['exchanges']}\n"
-                        f"   Tokens: ~{stats['tokens']}\n"
-                        f"   Summary: {'Yes' if stats['has_summary'] else 'No'}\n"
-                        f"   Last Updated: {stats['last_updated'][:16] if stats['last_updated'] else 'Never'}"
-                    )
-                else:
-                    state.messages.append("[yellow]⚠️  Agent not available[/yellow]")
-                return
-
-            elif subcmd == "reset":
-                # Reset conversation with confirmation
-                if hasattr(gpt, 'agent') and gpt.agent:
-                    if Confirm.ask("Reset conversation and start fresh?", default=False):
-                        gpt.agent.reset_conversation()
-                        state.messages.append("[green]✅ Conversation reset[/green]")
-                    else:
-                        state.messages.append("[dim]Reset cancelled[/dim]")
-                else:
-                    state.messages.append("[yellow]⚠️  Agent not available[/yellow]")
-                return
+        if gpt is None:
+            state.messages.append("[yellow]??  Agent not available[/yellow]")
+            return
 
         # Extract question (inline or prompt)
         question = " ".join(parts[1:]) if len(parts) > 1 else ""
 
         if not question:
-            question = Prompt.ask(
-                "🤖 Ask AI",
-                default="What should I work on today?"
-            )
+            question = "What should I work on today?"
+
+
+
 
         # Create streaming callback
         callback = create_streaming_callback(console)
@@ -1002,6 +1128,13 @@ Type [bold magenta]/[/bold magenta] to see all commands with descriptions in a d
   [yellow]? export[/yellow] [file]       →  Export chat to markdown
   [yellow]? reset[/yellow]               →  Reset conversation (with confirmation)
 
+  [dim]Notes with AI:[/dim]
+    [dim]? create a note titled "Meeting minutes" linked to task 12[/dim]
+    [dim]? search notes "webasto" and link the first to task 3[/dim]
+    [dim]? summarize note abcd1234[/dim]
+    [dim]? convert note abcd1234 into a task with priority 1 and tags backend,api[/dim]
+    [dim]? open note abcd1234 in editor[/dim]
+
   [dim]Examples:[/dim]
     [dim]? create a high priority task for code review[/dim]
     [dim]? what are my urgent tasks?[/dim]
@@ -1015,6 +1148,16 @@ Type [bold magenta]/[/bold magenta] to see all commands with descriptions in a d
   [yellow]exit[/yellow] / [yellow]q[/yellow]             →  Save and quit
 
 [dim]💡 Tip: Use shortcuts for faster workflow! Type [yellow]x 5[/yellow] instead of [yellow]done 5[/yellow][/dim]
+
+[bold cyan]📝 Notes:[/bold cyan]
+  [yellow]mode notes[/yellow]              →  Switch to notes list
+  [yellow]notes[/yellow] [task_id|query]   →  List/search notes (or for a task)
+  [yellow]notes clear[/yellow]             →  Clear notes filters
+  [yellow]note new[/yellow] --title "..." [--task 12] [--tag x]
+  [yellow]note edit[/yellow] <note_id_prefix>
+  [yellow]note link[/yellow] <note_id> <task_id>  /  [yellow]note unlink[/yellow] ...
+  [yellow]note delete[/yellow] <note_id_prefix>   /  [yellow]note duplicate[/yellow] <note_id_prefix>
+  [dim]Shortcuts:[/dim] Ctrl+N create note for selected task, Ctrl+O open latest note
         """
                 )
             )
@@ -1027,5 +1170,12 @@ Type [bold magenta]/[/bold magenta] to see all commands with descriptions in a d
     # Log state after command execution
     _log_state_snapshot("AFTER", state)
     debug_log.info(f"[COMMANDS] Command '{cmd}' completed")
+
+
+
+
+
+
+
 
 

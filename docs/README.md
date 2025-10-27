@@ -26,15 +26,14 @@ Task planning documents:
 - Work-in-progress notes
 
 ## User-Facing Documentation (Root)
-
 For everyday use, see the documentation in the project root:
 - **readme.md** - Main entry point with features and getting started
 - **USAGE_GUIDE.md** - Complete command reference
 - **QUICK_REFERENCE.md** - One-page cheat sheet
 - **MIGRATION_GUIDE.md** - Switching between Rich and Textual UIs
 - **CLAUDE.md** - Project instructions for Claude Code (development)
-
-## Documentation Updates
+- **VERSION.md** - Versioning policy and release workflow
+- **CHANGELOG.md** - Version history## Documentation Updates
 
 When adding new documentation:
 - **User guides** → Place in root (readme.md, guides, etc.)

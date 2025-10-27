@@ -85,14 +85,27 @@ def render_info_lines(console: Console, state: AppState):
     Render professional status panel under the table.
     Shows navigation, statistics, and filter info in a bordered panel.
     """
-    total = len(state.tasks)
-    completed = sum(1 for t in state.tasks if t.done)
-    incomplete = total - completed
-    shown = len(state.get_current_page_tasks())
+    if getattr(state, 'entity_mode', 'tasks') == 'notes':
+        total = len(getattr(state, 'notes', []))
+        completed = None
+        incomplete = None
+        page_size = state.page_size
+        start = state.page * page_size
+        end = min(start + page_size, total)
+        shown = max(0, end - start)
+    else:
+        total = len(state.tasks)
+        completed = sum(1 for t in state.tasks if t.done)
+        incomplete = total - completed
+        shown = len(state.get_current_page_tasks())
 
     # Calculate total pages
-    filtered_tasks = state.get_filter_tasks(state.tasks)
-    total_pages = (len(filtered_tasks) + state.page_size - 1) // state.page_size if len(filtered_tasks) > 0 else 1
+    if getattr(state, 'entity_mode', 'tasks') == 'notes':
+        total_items = total
+    else:
+        filtered_tasks = state.get_filter_tasks(state.tasks)
+        total_items = len(filtered_tasks)
+    total_pages = (total_items + state.page_size - 1) // state.page_size if total_items > 0 else 1
     current_page = state.page + 1
 
     # Line 1: Navigation and view context
@@ -102,7 +115,8 @@ def render_info_lines(console: Console, state: AppState):
         line1_parts = [
             f"Page [cyan]{current_page}[/cyan][dim]/{total_pages}[/dim]",
             f"[white]{shown}[/white][dim]/{total}[/dim] showing",
-            f"[magenta]{state.view_mode}[/magenta]",
+            f"mode=[magenta]{getattr(state,'entity_mode','tasks')}[/magenta]",
+            f"view=[magenta]{state.view_mode}[/magenta]",
             f"{order_icon} [blue]{state.sort}[/blue] [dim]({state.sort_order})[/dim]"
         ]
     else:
@@ -110,28 +124,39 @@ def render_info_lines(console: Console, state: AppState):
         line1_parts = [
             f"Page [cyan]{current_page}[/cyan][dim]/{total_pages}[/dim]",
             f"[white]{shown}[/white][dim]/{total}[/dim] showing",
-            f"[magenta]{state.view_mode}[/magenta]",
+            f"mode=[magenta]{getattr(state,'entity_mode','tasks')}[/magenta]",
+            f"view=[magenta]{state.view_mode}[/magenta]",
             f"Sort: [blue]{state.sort}[/blue] [dim]({order_text})[/dim]"
         ]
     line1 = "  •  ".join(line1_parts)
 
-    # Line 2: Task statistics
-    # Format: tasks • done • todo • filter
-    if USE_UNICODE:
-        line2_parts = [
-            f"[cyan]{total}[/cyan] tasks",
-            f"[green]{completed}[/green] done",
-            f"[yellow]{incomplete}[/yellow] todo"
-        ]
+    # Line 2: Task/Notes statistics
+    # Format: tasks • done • todo • filter  OR  notes • filter
+    if getattr(state, 'entity_mode', 'notes') == 'notes':
+        line2_parts = [f"[cyan]{total}[/cyan] notes"]
+        # Append active notes filter/search
+        tid_filter = getattr(state, 'notes_task_id_filter', None)
+        q = getattr(state, 'notes_query', '') or ''
+        if tid_filter is not None:
+            line2_parts.append(f"filter: task=#{tid_filter}")
+        if q.strip():
+            line2_parts.append(f"search: [yellow]{q.strip()}[/yellow]")
     else:
-        line2_parts = [
-            f"[cyan]{total}[/cyan] tasks",
-            f"[green]{completed}[/green] done",
-            f"[yellow]{incomplete}[/yellow] todo"
-        ]
+        if USE_UNICODE:
+            line2_parts = [
+                f"[cyan]{total}[/cyan] tasks",
+                f"[green]{completed}[/green] done",
+                f"[yellow]{incomplete}[/yellow] todo"
+            ]
+        else:
+            line2_parts = [
+                f"[cyan]{total}[/cyan] tasks",
+                f"[green]{completed}[/green] done",
+                f"[yellow]{incomplete}[/yellow] todo"
+            ]
 
-    # Add filter info if active (appended to line 2)
-    if state.filter != "none":
+    # Add task filter info if active (appended to line 2)
+    if getattr(state, 'entity_mode', 'tasks') == 'tasks' and state.filter != "none":
         line2_parts.append(f"Filter: [yellow]{state.filter}[/yellow]")
 
     line2 = "  •  ".join(line2_parts)
@@ -174,7 +199,7 @@ def render_dashboard(console: Console, state: AppState, use_prompt_toolkit: bool
 
     # Define rendering function
     def _render_content(c: Console):
-        # Build table
+        # Build table for current entity mode
         table = Table(
             show_header=True,
             header_style="bold cyan",
@@ -182,46 +207,96 @@ def render_dashboard(console: Console, state: AppState, use_prompt_toolkit: bool
             box=SIMPLE,
             show_edge=False
         )
-        table.add_column("ID", justify="center", no_wrap=True, style="dim", width=4)
-        table.add_column("Age", justify="center", no_wrap=True, width=4)
-        table.add_column("Prio", justify="center", no_wrap=True, width=6)
-        table.add_column("Tags", justify="left", style="cyan", width=20)
-        table.add_column("Task", justify="left")
+        if getattr(state, "entity_mode", "tasks") == "tasks":
+            table.add_column("ID", justify="center", no_wrap=True, style="dim", width=4)
+            table.add_column("Age", justify="center", no_wrap=True, width=4)
+            table.add_column("Prio", justify="center", no_wrap=True, width=6)
+            table.add_column("Tags", justify="left", style="cyan", width=20)
+            table.add_column("Task", justify="left")
 
-        for idx, task in enumerate(tasks):
-            row_style = "" if idx % 2 == 0 else "on grey15"
+            for idx, task in enumerate(tasks):
+                row_style = "" if idx % 2 == 0 else "on grey15"
 
-            if USE_UNICODE:
-                status_icon = "✓" if task.done else "✗"
-                priority_icons = {1: "🔴", 2: "🟡", 3: "🟢"}
-                priority_icon = priority_icons.get(task.priority, "⚪")
-            else:
-                status_icon = "Y" if task.done else "N"
-                priority_icons = {1: "!", 2: "·", 3: "-"}
-                priority_icon = priority_icons.get(task.priority, "?")
+                if USE_UNICODE:
+                    status_icon = "✓" if task.done else "✗"
+                    priority_icons = {1: "🔴", 2: "🟡", 3: "🟢"}
+                    priority_icon = priority_icons.get(task.priority, "⚪")
+                else:
+                    status_icon = "Y" if task.done else "N"
+                    priority_icons = {1: "!", 2: "·", 3: "-"}
+                    priority_icon = priority_icons.get(task.priority, "?")
 
-            status_color = "green" if task.done else "red"
-            priority_labels = {1: "HIGH", 2: "MED", 3: "LOW"}
-            priority_label = priority_labels.get(task.priority, "?")
-            task_display = f"[{status_color}]{status_icon}[/{status_color}] {task.name}"
-            priority_label = priority_labels.get(task.priority, "?")
-            tags_display = task.get_tags_display()
-            priority_display = f"{priority_icon} {priority_label}"
-            age_display = humanize_age(getattr(task, "created_at", ""))
-            table.add_row(
-                str(task.id),
-                age_display,
-                priority_display,
-                tags_display,
-                task_display,
-                style=row_style,
-            )
-            if mode == "detail":
-                arrow = emoji("?", "->")
-                if task.comment:
-                    table.add_row("", "", "", f"  [dim]{arrow} {task.comment}[/dim]", style=row_style)
-                if task.description:
-                    table.add_row("", "", "", f"    [dim italic]{task.description}[/dim italic]", style=row_style)
+                status_color = "green" if task.done else "red"
+                priority_labels = {1: "HIGH", 2: "MED", 3: "LOW"}
+                priority_label = priority_labels.get(task.priority, "?")
+                # Add note indicator
+                note_count = len(getattr(state, "_notes_by_task", {}).get(task.id, []))
+                note_indicator = f" [dim]📄x{note_count}[/dim]" if note_count > 0 else ""
+                task_display = f"[{status_color}]{status_icon}[/{status_color}] {task.name}{note_indicator}"
+                tags_display = task.get_tags_display()
+                priority_display = f"{priority_icon} {priority_label}"
+                age_display = humanize_age(getattr(task, "created_at", ""))
+                table.add_row(
+                    str(task.id),
+                    age_display,
+                    priority_display,
+                    tags_display,
+                    task_display,
+                    style=row_style,
+                )
+                if mode == "detail":
+                    arrow = emoji("?", "->")
+                    if task.comment:
+                        table.add_row("", "", "", f"  [dim]{arrow} {task.comment}[/dim]", style=row_style)
+                    if task.description:
+                        table.add_row("", "", "", f"    [dim italic]{task.description}[/dim italic]", style=row_style)
+                    # Linked notes excerpts
+                    try:
+                        notes = state.get_notes_for_task(task.id)
+                        for n in notes[:3]:
+                            table.add_row("", "", "", f"  [dim]• {n.title} — {n.excerpt(80)}[/dim]", style=row_style)
+                    except Exception:
+                        pass
+        else:
+            # Notes mode table (paged)
+            table.add_column("ID", justify="left", no_wrap=True, style="dim", width=12)
+            table.add_column("Age", justify="center", no_wrap=True, width=4)
+            table.add_column("Tags", justify="left", style="cyan", width=20)
+            table.add_column("Title", justify="left")
+
+            notes_all = list(getattr(state, "notes", []))
+            # Apply filters
+            tid_filter = getattr(state, 'notes_task_id_filter', None)
+            if tid_filter is not None:
+                notes_all = [n for n in notes_all if tid_filter in (n.task_ids or [])]
+            q = (getattr(state, 'notes_query', '') or '').strip().lower()
+            if q:
+                filtered = []
+                for n in notes_all:
+                    if (
+                        q in (n.title or '').lower()
+                        or any(q in t for t in (n.tags or []))
+                        or q in (n.body_md or '').lower()
+                        or (n.id or '').lower().startswith(q)
+                    ):
+                        filtered.append(n)
+                notes_all = filtered
+            # Newest first by created_at
+            def _key(n):
+                return getattr(n, "created_at", "") or ""
+            notes_all.sort(key=_key, reverse=True)
+            # Use same pagination state
+            page_size = state.page_size
+            start = state.page * page_size
+            end = start + page_size
+            notes = notes_all[start:end]
+            for idx, n in enumerate(notes):
+                row_style = "" if idx % 2 == 0 else "on grey15"
+                from utils.time import humanize_age as _h
+                age_display = _h(getattr(n, "created_at", ""))
+                tags_display = ", ".join(n.tags)
+                title_display = f"{n.title} [dim]{' '.join(f'#{t}' for t in n.task_ids[:5])}[/dim]"
+                table.add_row(n.id[:12], age_display, tags_display, title_display, style=row_style)
 
         # Print table
         c.print(table)

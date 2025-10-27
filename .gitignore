@@ -19,3 +19,5 @@ tasks.json.backup*
 .vscode/
 .idea/
 
+nul
+tmp_*.txt

@@ -1,11 +1,8 @@
-# Core UI Libraries
-rich==14.0.0
-prompt-toolkit==3.0.50
-questionary>=2.1.0,<3.0.0
-
-# Textual TUI Framework (NEW - Modern reactive TUI)
+﻿# UI
 textual>=1.0.0,<2.0.0
-textual-dev>=1.7.0  # Development tools and console
+
+# Clipboard support
+pyperclip>=1.8.0
 
 # OpenAI Integration (Optional)
 openai>=1.70.0,<2.0.0
@@ -20,3 +17,7 @@ portalocker>=2.8.2
 langchain>=0.1.0
 langchain-openai>=0.0.5
 langchain-community>=0.0.20
+
+# Testing
+pytest>=8.0.0
+pytest-cov>=4.1.0

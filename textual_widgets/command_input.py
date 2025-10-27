@@ -17,16 +17,16 @@ class CommandSuggester(Suggester):
     # Command completions with descriptions
     COMMANDS = {
         # Task Management
-        "add": "Add new task (opens form)",
-        "edit": "Edit task (opens form)",
+        "add": "Add new item (task/note based on mode)",
+        "edit": "Edit selected item (task/note based on mode)",
         "done": "Mark task(s) as complete",
         "undone": "Mark task(s) as incomplete",
         "remove": "Delete task(s)",
         "show": "Show task details or filter",
 
         # Shortcuts
-        "a": "Shortcut: add task (form)",
-        "e": "Shortcut: edit task (form)",
+        "a": "Shortcut: add (mode-aware)",
+        "e": "Shortcut: edit (mode-aware)",
         "x": "Shortcut for done",
         "u": "Shortcut for undone",
         "d": "Shortcut for done",
@@ -56,6 +56,11 @@ class CommandSuggester(Suggester):
         "?": "Ask GPT (requires API key)",
         "help": "Show help",
         "h": "Shortcut for help",
+
+        # Notes & Mode
+        "mode": "Switch between tasks/notes",
+        "notes": "List/search notes (notes [task_id|query])",
+        "note": "Notes actions (new, edit, delete, duplicate)",
 
         # System
         "clear": "Clear screen",
@@ -131,6 +136,19 @@ class CommandSuggester(Suggester):
                 if mode.startswith(value.split(" ", 1)[1].lower() if " " in value else ""):
                     prefix = "view " if value_lower.startswith("view") else "v "
                     return prefix + mode
+
+        # Notes subcommands suggestions
+        if value_lower.startswith("note "):
+            tail = value.split(" ", 1)[1] if " " in value else ""
+            for sub in ["new", "edit ", "delete ", "duplicate "]:
+                if sub.startswith(tail.lower()):
+                    return "note " + sub
+
+        if value_lower.startswith("mode "):
+            tail = value.split(" ", 1)[1] if " " in value else ""
+            for sub in ["tasks", "notes"]:
+                if sub.startswith(tail.lower()):
+                    return "mode " + sub
 
         # Check for command completions
         for cmd, desc in self.COMMANDS.items():
@@ -208,6 +226,31 @@ class CommandInput(Input):
             event.stop()
             event.prevent_default()
 
+    def on_key(self, event) -> None:
+        """Augment key handling: if input is empty and user presses Enter,
+        open the currently selected item (tasks/notes) instead of submitting
+        an empty command. This keeps Enter behavior consistent with tables.
+        """
+        if event.key == "enter" and not (self.value or "").strip():
+            try:
+                # Delegate to app-level action; safe no-op if not available
+                if hasattr(self.app, "action_open_selected"):
+                    self.app.action_open_selected()
+            except Exception as e:
+                try:
+                    from debug_logger import debug_log
+                    debug_log.warning(f"[CMD_INPUT] Empty Enter delegation failed: {e}")
+                except Exception:
+                    pass
+            event.stop()
+            event.prevent_default()
+            return
+        # Fallback to default behavior for other keys
+        try:
+            return super().on_key(event)
+        except Exception:
+            return None
+
     async def _on_key(self, event) -> None:
         """
         Handle special keys (up/down for history)
@@ -241,9 +284,19 @@ class CommandInput(Input):
 
     def on_focus(self) -> None:
         """Handle focus event - notify app that command input is active"""
+        try:
+            from debug_logger import debug_log
+            debug_log.info(f"[COMMAND_INPUT] ✅ GAINED FOCUS")
+        except Exception:
+            pass
         self.post_message(self.CommandFocused())
 
     def on_blur(self) -> None:
         """Handle blur event - notify app that command input is inactive"""
+        try:
+            from debug_logger import debug_log
+            debug_log.info(f"[COMMAND_INPUT] ❌ LOST FOCUS")
+        except Exception:
+            pass
         self.post_message(self.CommandBlurred())
 

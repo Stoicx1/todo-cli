@@ -17,6 +17,7 @@ DEFAULT_HISTORY_FILE = Path.home() / ".todo_cli_history"
 DEFAULT_AUTH_FILE = Path.home() / ".todo_auth"
 DEFAULT_SETTINGS_FILE = Path.home() / ".todo_cli_settings.json"
 DEFAULT_AI_CONVERSATION_FILE = Path.home() / ".todo_cli_ai_history.json"
+DEFAULT_NOTES_DIR = "notes"
 
 
 # ============================================================================
@@ -149,6 +150,9 @@ DEBUG_PARSER = False  # When True, prints parsed command parts in UI
 IS_WINDOWS = sys.platform.startswith('win')
 IS_MACOS = sys.platform == 'darwin'
 IS_LINUX = sys.platform.startswith('linux')
+
+# Editor configuration (used for notes)
+DEFAULT_EDITOR_CMD: str | None = None  # Use $VISUAL/$EDITOR if None
 
 
 # ============================================================================
