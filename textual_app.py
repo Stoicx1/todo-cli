@@ -60,9 +60,9 @@ $background: #0f172a;
 $text: #f1f5f9;
 $text-muted: #94a3b8;
 
-Screen { background: $surface; }
+Screen { background: $surface; overflow-y: hidden; }
 
-#app_layout { height: 100vh; layout: vertical; }
+#app_layout { height: 1fr; layout: vertical; }
 #bottom_section { height: auto; layout: vertical; }
 
 Header { background: $primary; color: $text; height: 3; content-align: center middle; }
@@ -99,9 +99,9 @@ ConfirmDialog Button#cancel:hover { background: cyan; }
 
 #main_container { height: 1fr; layout: horizontal; }
 
-LeftPanelContainer { width: 70%; height: 1fr; }
+LeftPanelContainer { width: 70%; height: 1fr; overflow-y: auto; }
 
-#ai_chat_panel { width: 30%; height: 1fr; border: solid cyan; background: $panel; padding: 1; }
+#ai_chat_panel { width: 30%; height: 1fr; overflow-y: auto; border: solid cyan; background: $panel; padding: 1; }
 #ai_chat_panel .empty-state { color: $text-muted; text-align: center; padding: 2; }
 
 MessageBubble { padding: 1 2; margin: 1 0; border: solid #94a3b8; background: $surface; color: $text; }
@@ -127,9 +127,9 @@ $background: #ffffff;
 $text: #0f172a;
 $text-muted: #475569;
 
-Screen { background: $surface; }
+Screen { background: $surface; overflow-y: hidden; }
 
-#app_layout { height: 100vh; layout: vertical; }
+#app_layout { height: 1fr; layout: vertical; }
 #bottom_section { height: auto; layout: vertical; }
 
 Header { background: $primary; color: $text; height: 3; content-align: center middle; }
@@ -166,9 +166,9 @@ ConfirmDialog Button#cancel:hover { background: $secondary; }
 
 #main_container { height: 1fr; layout: horizontal; }
 
-LeftPanelContainer { width: 70%; height: 1fr; }
+LeftPanelContainer { width: 70%; height: 1fr; overflow-y: auto; }
 
-#ai_chat_panel { width: 30%; height: 1fr; border: solid $secondary; background: $panel; padding: 1; color: $text; }
+#ai_chat_panel { width: 30%; height: 1fr; overflow-y: auto; border: solid $secondary; background: $panel; padding: 1; color: $text; }
 #ai_chat_panel .empty-state { color: $text-muted; text-align: center; padding: 2; }
 
 MessageBubble { padding: 1 2; margin: 1 0; border: solid #94a3b8; background: $surface; color: $text; }
@@ -345,9 +345,9 @@ class TodoTextualApp(App):
                 yield AIInput(id="ai_input")
                 debug_log.info("AIInput created")
 
-        debug_log.info("Creating ContextFooter widget...")
-        yield ContextFooter()
-        debug_log.info("ContextFooter created")
+            debug_log.info("Creating ContextFooter widget...")
+            yield ContextFooter()
+            debug_log.info("ContextFooter created")
 
         debug_log.info("compose() completed - All widgets created")
 
@@ -389,20 +389,25 @@ class TodoTextualApp(App):
             debug_log.error(f"AIInput widget not found: {e}")
 
         # Load tasks from file
-        debug_log.info(f"Loading tasks from file: {self.tasks_file}")
+        import time
+        debug_log.info(f"[LOAD_TASKS] Loading tasks from file: {self.tasks_file}")
         try:
+            start_time = time.time()
             self.state.load_from_file(self.tasks_file, self.console)
-            debug_log.info(f"Tasks loaded successfully - {len(self.state.tasks)} tasks")
+            elapsed = (time.time() - start_time) * 1000
+            debug_log.info(f"[LOAD_TASKS] ✓ Tasks loaded successfully - {len(self.state.tasks)} tasks in {elapsed:.2f}ms")
         except Exception as e:
-            debug_log.error(f"Failed to load tasks: {e}", exception=e)
+            debug_log.error(f"[LOAD_TASKS] ✗ Failed to load tasks: {e}", exception=e)
 
         # Load AI conversation history
-        debug_log.info(f"Loading AI conversation from: {DEFAULT_AI_CONVERSATION_FILE}")
+        debug_log.info(f"[LOAD_AI] Loading AI conversation from: {DEFAULT_AI_CONVERSATION_FILE}")
         try:
+            start_time = time.time()
             self.state.load_conversation_from_file(str(DEFAULT_AI_CONVERSATION_FILE), self.console)
-            debug_log.info(f"AI conversation loaded - {len(self.state.ai_conversation)} messages")
+            elapsed = (time.time() - start_time) * 1000
+            debug_log.info(f"[LOAD_AI] ✓ AI conversation loaded - {len(self.state.ai_conversation)} messages in {elapsed:.2f}ms")
         except Exception as e:
-            debug_log.error(f"Failed to load AI conversation: {e}", exception=e)
+            debug_log.error(f"[LOAD_AI] ✗ Failed to load AI conversation: {e}", exception=e)
 
         # Cache widget references BEFORE calling refresh_table()
         # This ensures refresh_table() has access to widgets
@@ -550,6 +555,9 @@ class TodoTextualApp(App):
         """
         from pathlib import Path
         import json as _json
+        import time
+
+        debug_log.info("[THEME_LOAD] Starting theme preference load...")
 
         # Default theme if no preference found
         theme_name = "dark"
@@ -557,49 +565,90 @@ class TodoTextualApp(App):
         try:
             from config import DEFAULT_SETTINGS_FILE
             settings_path = Path(DEFAULT_SETTINGS_FILE)
+            debug_log.debug(f"[THEME_LOAD] Settings file: {settings_path}")
+            debug_log.debug(f"[THEME_LOAD] Settings file exists: {settings_path.exists()}")
+
             if settings_path.exists():
                 data = _json.loads(settings_path.read_text(encoding="utf-8"))
+                debug_log.debug(f"[THEME_LOAD] Settings data: {data}")
                 saved_theme = (data.get("theme") or "dark").lower()
+                debug_log.debug(f"[THEME_LOAD] Saved theme: {saved_theme}")
                 if saved_theme in self._THEMES:
                     theme_name = saved_theme
-        except Exception:
+                    debug_log.info(f"[THEME_LOAD] Using saved theme: {theme_name}")
+                else:
+                    debug_log.warning(f"[THEME_LOAD] Unknown theme '{saved_theme}', using default")
+            else:
+                debug_log.info(f"[THEME_LOAD] No settings file, using default theme: {theme_name}")
+        except Exception as e:
             # If any error, use default theme
-            pass
+            debug_log.warning(f"[THEME_LOAD] Error reading settings: {e}, using default")
 
         # ALWAYS apply a theme (either saved preference or default)
         try:
+            start_time = time.time()
             self._current_theme = theme_name
-            # Clear existing CSS and add new theme source
-            self.stylesheet.add_source(self._THEMES[theme_name])
-            self.stylesheet.parse()  # Parse the added source
-            debug_log.info(f"Theme loaded: {theme_name}")
+            debug_log.debug(f"[THEME_LOAD] Current theme set to: {theme_name}")
+
+            # Add theme source and parse (Textual handles source management internally)
+            debug_log.debug(f"[THEME_LOAD] Adding theme source (CSS length: {len(self._THEMES[theme_name])} chars)")
+            self.stylesheet.add_source(self._THEMES[theme_name], tie_breaker=1000)
+            debug_log.debug("[THEME_LOAD] Reparsing stylesheet...")
+            self.stylesheet.reparse()  # Re-parse all sources
+            debug_log.debug("[THEME_LOAD] Refreshing UI...")
+            self.refresh()  # Refresh UI to apply theme immediately
+
+            elapsed = (time.time() - start_time) * 1000
+            debug_log.info(f"[THEME_LOAD] ✓ Theme '{theme_name}' loaded and applied in {elapsed:.2f}ms")
         except Exception as e:
-            debug_log.error(f"Failed to load theme '{theme_name}': {e}", exception=e)
+            debug_log.error(f"[THEME_LOAD] ✗ Failed to load theme '{theme_name}': {e}", exception=e)
 
     def action_toggle_theme(self) -> None:
         nxt = "light" if (self._current_theme or "dark") == "dark" else "dark"
         self.action_switch_theme(nxt)
 
     def action_switch_theme(self, theme: str) -> None:
+        import time
+
         name = (theme or "").strip().lower()
+        old_theme = self._current_theme or "none"
+
+        debug_log.info(f"[THEME_SWITCH] Switching theme: {old_theme} → {name}")
+
         if name not in self._THEMES:
+            debug_log.warning(f"[THEME_SWITCH] ✗ Unknown theme '{name}', available: {list(self._THEMES.keys())}")
             try:
                 self.console.print(f"[yellow]Unknown theme '{theme}'. Available: {', '.join(self._THEMES)}[/yellow]")
             except Exception:
                 pass
             return
+
         try:
-            # Clear existing stylesheet and add new theme source
-            self.stylesheet.clear()
-            self.stylesheet.add_source(self._THEMES[name])
-            self.stylesheet.parse()  # Parse the added source
+            start_time = time.time()
+
+            # Add new theme source and re-parse (Textual handles source management)
+            debug_log.debug(f"[THEME_SWITCH] Adding theme source (CSS length: {len(self._THEMES[name])} chars)")
+            self.stylesheet.add_source(self._THEMES[name], tie_breaker=1000)
+
+            debug_log.debug("[THEME_SWITCH] Reparsing stylesheet...")
+            self.stylesheet.reparse()  # Re-parse all sources
+
             self._current_theme = name
+            debug_log.debug(f"[THEME_SWITCH] Current theme set to: {name}")
+
+            debug_log.debug("[THEME_SWITCH] Saving theme preference...")
             self._save_theme_preference()
+
+            debug_log.debug("[THEME_SWITCH] Refreshing UI...")
             try:
                 self.refresh()
-            except Exception:
-                pass
+            except Exception as e:
+                debug_log.warning(f"[THEME_SWITCH] Refresh failed: {e}")
+
+            elapsed = (time.time() - start_time) * 1000
+            debug_log.info(f"[THEME_SWITCH] ✓ Theme switched to '{name}' in {elapsed:.2f}ms")
         except Exception as e:
+            debug_log.error(f"[THEME_SWITCH] ✗ Failed to switch theme to '{name}': {e}", exception=e)
             try:
                 self.console.print(f"[red]Failed to load theme '{name}': {e}[/red]")
             except Exception:
