@@ -736,6 +736,50 @@ def get_task_statistics() -> str:
 
 
 # ============================================================================
+# TOOL 9: SAVE ALL CHANGES
+# ============================================================================
+
+@tool
+def save_all_changes() -> str:
+    """
+    Explicitly save all tasks and notes to disk.
+
+    Use this when:
+    - User explicitly asks to "save" or "persist" changes
+    - After making multiple modifications and wanting to ensure persistence
+    - Before critical operations to ensure data is saved
+
+    Note: Most operations auto-save, but this provides explicit confirmation.
+
+    Returns:
+        Success message confirming tasks and notes were saved
+
+    Example:
+        save_all_changes()
+    """
+    debug_log.debug("[AI_TOOLS] save_all_changes() called")
+
+    try:
+        state = _get_state()
+
+        # Save tasks to disk
+        _save_tasks()
+        task_count = len(state.tasks)
+
+        # Refresh notes from disk (notes save automatically via repository)
+        state.refresh_notes_from_disk()
+        note_count = len(getattr(state, 'notes', []))
+
+        debug_log.info(f"[AI_TOOLS] save_all_changes() completed - {task_count} tasks, {note_count} notes")
+
+        return f"✅ All changes saved to disk\n   Tasks: {task_count}\n   Notes: {note_count}"
+
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] save_all_changes() failed: {str(e)}", exception=e)
+        return f"❌ Error: Failed to save changes - {str(e)}"
+
+
+# ============================================================================
 # TOOL REGISTRY
 # ============================================================================
 
@@ -744,9 +788,10 @@ def get_all_tools():
     Get list of all available tools for agent initialization.
 
     Returns:
-        List of LangChain tool functions (8 tools)
+        List of LangChain tool functions (21 tools)
     """
     return [
+        # Task management (9 tools)
         create_task,
         edit_task,
         complete_task,
@@ -755,7 +800,8 @@ def get_all_tools():
         search_tasks,
         get_task_details,
         get_task_statistics,
-        # Notes tools
+        save_all_changes,  # NEW: Explicit save tool
+        # Notes tools (8 tools)
         create_note,
         edit_note,
         link_note,
@@ -764,7 +810,7 @@ def get_all_tools():
         search_notes,
         get_note_details,
         get_linked_notes_for_task,
-        # Advanced helpers
+        # Advanced helpers (4 tools)
         get_note_body,
         convert_note_to_task,
         append_note_to_task,
