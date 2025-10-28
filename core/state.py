@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Optional, List, Dict
 from dataclasses import asdict
 from pathlib import Path
+from enum import Enum
 import json
 
 from typing import Any
@@ -21,6 +22,16 @@ from config import ui, performance, USE_UNICODE, DEFAULT_SETTINGS_FILE
 
 # AI Conversation limits
 MAX_CONVERSATION_MESSAGES = 100
+
+
+class LeftPanelMode(Enum):
+    """Left panel view modes for dynamic content switching"""
+    LIST_TASKS = "list_tasks"
+    DETAIL_TASK = "detail_task"
+    EDIT_TASK = "edit_task"
+    LIST_NOTES = "list_notes"
+    DETAIL_NOTE = "detail_note"
+    EDIT_NOTE = "edit_note"
 
 
 class AppState:
@@ -42,8 +53,13 @@ class AppState:
         self._note_index: Dict[str, Note] = {}
         self._notes_by_task: Dict[int, List[str]] = {}
         self.selected_task_id: int | None = None
+        self.selected_note_id: str | None = None  # NEW - for panel system
         self.notes_query: str = ""
         self.notes_task_id_filter: int | None = None
+
+        # Left panel state (NEW - for vim-style panel switching)
+        self.left_panel_mode: LeftPanelMode = LeftPanelMode.LIST_TASKS
+        self.edit_mode_is_new: bool = False  # Tracks create vs edit in EDIT modes
 
         # AI panel state (for live output rendering in Rich UI)
         self.ai_text: str = ""

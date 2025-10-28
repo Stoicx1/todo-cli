@@ -1,0 +1,392 @@
+"""
+TaskEditPanel - Inline task editing panel (replaces TaskForm modal)
+
+Enables creating/editing tasks with persistent AI chat access.
+Implements dirty state tracking and validation.
+"""
+
+from textual.app import ComposeResult
+from textual.containers import VerticalScroll, Horizontal
+from textual.widgets import Static, Input, Select, Label
+from textual.binding import Binding
+from textual.reactive import reactive
+from textual.validation import Length
+
+from models.task import Task
+from utils.tag_parser import parse_tags
+from utils.validators import validate_task_name, sanitize_comment, sanitize_description, clamp_priority
+from config import validation
+
+
+class TaskEditPanel(VerticalScroll):
+    """
+    Inline task edit/create panel for left panel area
+
+    Features:
+        - Create new tasks or edit existing
+        - Dirty state tracking (warns on unsaved changes)
+        - Inline validation
+        - AI chat remains accessible during editing
+
+    Keybindings:
+        Ctrl+S: Save task
+        Esc: Cancel (warns if dirty)
+
+    CRITICAL: Uses _task_data instead of _task (reserved by MessagePump)
+    """
+
+    DEFAULT_CSS = """
+    TaskEditPanel {
+        width: 100%;
+        height: 1fr;
+        border: solid yellow;  /* Yellow = edit mode */
+        background: $surface;
+        padding: 1 2;
+    }
+
+    TaskEditPanel:focus-within {
+        border: solid yellow 2px;
+    }
+
+    TaskEditPanel Static.title {
+        width: 100%;
+        content-align: center middle;
+        text-style: bold;
+        color: yellow;
+        padding: 0 0 1 0;
+    }
+
+    TaskEditPanel Static.error {
+        color: red;
+        width: 100%;
+        height: auto;
+        padding: 0 0 1 0;
+    }
+
+    TaskEditPanel Static.label {
+        width: 15;
+        content-align: right middle;
+        padding: 0 1 0 0;
+        color: cyan;
+        text-style: bold;
+    }
+
+    TaskEditPanel .field-row {
+        width: 100%;
+        height: auto;
+        margin: 0 0 1 0;
+    }
+
+    TaskEditPanel Input {
+        width: 1fr;
+        border: solid cyan;
+        background: $surface;
+    }
+
+    TaskEditPanel Input:focus {
+        border: solid yellow;
+        background: $panel;
+    }
+
+    TaskEditPanel Select {
+        width: 1fr;
+        border: solid cyan;
+    }
+
+    TaskEditPanel Select:focus {
+        border: solid yellow;
+    }
+
+    TaskEditPanel Static.hint {
+        color: $text-muted;
+        width: 100%;
+        height: auto;
+        padding: 0 0 1 15;
+        text-style: italic;
+        font-size: 0.9;
+    }
+
+    TaskEditPanel Static.hint-main {
+        color: $text-muted;
+        width: 100%;
+        text-align: center;
+        padding: 1 0 0 0;
+        text-style: italic;
+    }
+
+    TaskEditPanel Static.dirty-indicator {
+        color: yellow;
+        width: 100%;
+        text-align: center;
+        padding: 0 0 1 0;
+    }
+    """
+
+    BINDINGS = [
+        Binding("ctrl+s", "save", "Save", priority=True),
+        Binding("escape", "cancel", "Cancel", priority=True),
+    ]
+
+    # Reactive dirty flag
+    is_dirty = reactive(False)
+
+    def __init__(
+        self,
+        task_data: Task | None = None,
+        is_new: bool = False,
+        existing_tags: list[str] | None = None,
+        **kwargs
+    ):
+        """
+        Initialize task edit panel
+
+        Args:
+            task_data: Task to edit (None for new task)
+            is_new: True if creating new task
+            existing_tags: List of existing tags for suggestions
+            **kwargs: Additional widget arguments
+
+        CRITICAL: Uses _task_data instead of _task (reserved attribute)
+        """
+        super().__init__(**kwargs)
+        self._task_data = task_data  # NOT _task - reserved by MessagePump!
+        self._is_new = is_new
+        self.existing_tags = existing_tags or []
+        self._original_values = {}  # For dirty tracking
+
+    def compose(self) -> ComposeResult:
+        """Compose the edit form"""
+        title = "Create New Task" if self._is_new else f"Edit Task #{self._task_data.id}"
+
+        yield Static(title, classes="title")
+        yield Static("", id="error_message", classes="error")
+        yield Static("", id="dirty_indicator", classes="dirty-indicator")
+
+        # Name field (required)
+        with Horizontal(classes="field-row"):
+            yield Static("Name:", classes="label")
+            yield Input(
+                placeholder="Task name (required)",
+                value=self._task_data.name if self._task_data else "",
+                id="name_input",
+                validators=[
+                    Length(
+                        minimum=validation.MIN_TASK_NAME_LENGTH,
+                        maximum=validation.MAX_TASK_NAME_LENGTH,
+                    )
+                ]
+            )
+
+        # Comment field (optional)
+        with Horizontal(classes="field-row"):
+            yield Static("Comment:", classes="label")
+            yield Input(
+                placeholder="Short comment (optional)",
+                value=self._task_data.comment if self._task_data else "",
+                id="comment_input",
+            )
+        yield Static("Brief note or context", classes="hint")
+
+        # Description field (optional)
+        with Horizontal(classes="field-row"):
+            yield Static("Description:", classes="label")
+            yield Input(
+                placeholder="Detailed description (optional)",
+                value=self._task_data.description if self._task_data else "",
+                id="description_input",
+            )
+        yield Static("Full details and requirements", classes="hint")
+
+        # Priority (select dropdown)
+        with Horizontal(classes="field-row"):
+            yield Static("Priority:", classes="label")
+            priority_value = str(self._task_data.priority) if self._task_data else "2"
+            yield Select(
+                options=[
+                    ("🔴 High (1)", "1"),
+                    ("🟡 Medium (2)", "2"),
+                    ("🟢 Low (3)", "3"),
+                ],
+                value=priority_value,
+                id="priority_select",
+            )
+
+        # Tags (comma-separated)
+        with Horizontal(classes="field-row"):
+            yield Static("Tags:", classes="label")
+            tags_value = ", ".join(self._task_data.tags) if self._task_data else ""
+            yield Input(
+                placeholder="tag1, tag2, tag3 (max 3)",
+                value=tags_value,
+                id="tags_input",
+            )
+
+        # Tag suggestions
+        if self.existing_tags:
+            existing_tags_str = ", ".join(sorted(self.existing_tags[:10]))
+            if len(self.existing_tags) > 10:
+                existing_tags_str += f", ... ({len(self.existing_tags)} total)"
+            yield Static(f"Existing: {existing_tags_str}", classes="hint")
+        else:
+            yield Static("Separate tags with commas", classes="hint")
+
+        # Action hints
+        yield Static(
+            "[dim]Ctrl+S to save | Esc to cancel | AI chat available on the right →[/dim]",
+            classes="hint-main"
+        )
+
+    def on_mount(self) -> None:
+        """Focus name input and capture original values"""
+        self.query_one("#name_input", Input).focus()
+        self._capture_original_values()
+
+    def _capture_original_values(self) -> None:
+        """Store original values for dirty tracking"""
+        try:
+            self._original_values = {
+                "name": self.query_one("#name_input", Input).value,
+                "comment": self.query_one("#comment_input", Input).value,
+                "description": self.query_one("#description_input", Input).value,
+                "priority": self.query_one("#priority_select", Select).value,
+                "tags": self.query_one("#tags_input", Input).value,
+            }
+        except Exception:
+            self._original_values = {}
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Mark dirty when any input changes"""
+        self._check_dirty_state()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Mark dirty when select changes"""
+        self._check_dirty_state()
+
+    def _check_dirty_state(self) -> bool:
+        """Check if form has unsaved changes"""
+        try:
+            current = {
+                "name": self.query_one("#name_input", Input).value,
+                "comment": self.query_one("#comment_input", Input).value,
+                "description": self.query_one("#description_input", Input).value,
+                "priority": self.query_one("#priority_select", Select).value,
+                "tags": self.query_one("#tags_input", Input).value,
+            }
+
+            # Compare with original
+            is_changed = any(
+                current[key] != self._original_values.get(key, "")
+                for key in current
+            )
+
+            self.is_dirty = is_changed
+
+            # Update dirty indicator
+            dirty_indicator = self.query_one("#dirty_indicator", Static)
+            if is_changed:
+                dirty_indicator.update("[yellow]● Unsaved changes[/yellow]")
+            else:
+                dirty_indicator.update("")
+
+            return is_changed
+
+        except Exception:
+            return False
+
+    def action_save(self) -> None:
+        """Validate and save task (Ctrl+S)"""
+        # Get field values
+        name = self.query_one("#name_input", Input).value.strip()
+        comment = self.query_one("#comment_input", Input).value.strip()
+        description = self.query_one("#description_input", Input).value.strip()
+        priority_str = self.query_one("#priority_select", Select).value
+        tags_str = self.query_one("#tags_input", Input).value.strip()
+
+        # Clear previous errors
+        error_msg = self.query_one("#error_message", Static)
+        error_msg.update("")
+
+        # Validate task name
+        is_valid, error = validate_task_name(name)
+        if not is_valid:
+            error_msg.update(f"❌ {error}")
+            self.query_one("#name_input", Input).focus()
+            return
+
+        # Parse priority
+        try:
+            priority = int(priority_str) if priority_str else 2
+            priority = clamp_priority(priority)
+        except ValueError:
+            priority = 2
+
+        # Parse tags
+        tag_list = parse_tags(tags_str) if tags_str else []
+
+        # Sanitize inputs
+        comment = sanitize_comment(comment)
+        description = sanitize_description(description)
+
+        # Build result dict
+        data = {
+            "name": name,
+            "comment": comment,
+            "description": description,
+            "priority": priority,
+            "tag": tag_list[0] if tag_list else "",  # Legacy field
+            "tags": tag_list,  # New field
+        }
+
+        # Save via state
+        if self._is_new:
+            self.app.state.add_task(**data)
+            self.app.notify(f"Task created: {name}", severity="success")
+        else:
+            # Update existing task
+            task = self._task_data
+            task.name = name
+            task.comment = comment
+            task.description = description
+            task.priority = priority
+            task.tags = tag_list
+            task.tag = tag_list[0] if tag_list else ""
+
+            # Update timestamp
+            from datetime import datetime
+            task.updated_at = datetime.now().isoformat()
+
+            # Invalidate filter cache
+            self.app.state.invalidate_filter_cache()
+
+            self.app.notify(f"Task #{task.id} updated", severity="success")
+
+        # Return to list view
+        from core.state import LeftPanelMode
+        self.app.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+        self.app.refresh_table()
+
+        # Save to file
+        self.app.state.save_to_file(self.app.tasks_file, self.app.console)
+
+    async def action_cancel(self) -> None:
+        """Cancel editing with dirty check (Esc)"""
+        # Check if dirty
+        if self.is_dirty:
+            from textual_widgets.confirm_dialog import ConfirmDialog
+
+            confirmed = await self.app.push_screen_wait(
+                ConfirmDialog("Discard unsaved changes?")
+            )
+
+            if not confirmed:
+                return
+
+        # Return to previous state
+        from core.state import LeftPanelMode
+
+        if self._is_new:
+            # Creating new task - return to list
+            self.app.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+        else:
+            # Editing existing - return to detail view
+            self.app.state.left_panel_mode = LeftPanelMode.DETAIL_TASK
