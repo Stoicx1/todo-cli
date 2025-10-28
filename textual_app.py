@@ -29,6 +29,7 @@ from textual_widgets.confirm_dialog import ConfirmDialog
 from textual_widgets.ai_chat_panel import AIChatPanel
 from textual_widgets.ai_input import AIInput
 from textual_widgets.task_detail_modal import TaskDetailModal
+from textual_widgets.panels import LeftPanelContainer
 from config import DEFAULT_TASKS_FILE, DEFAULT_AI_CONVERSATION_FILE
 from debug_logger import debug_log
 from utils.version import get_version
@@ -327,6 +328,7 @@ class TodoTextualApp(App):
     filter_text = reactive("none")
     command_mode = reactive(False)  # Toggle command input visibility
     ai_panel_visible = reactive(True)  # AI chat panel visibility
+    left_panel_mode = reactive(None, init=False)  # NEW - Panel system mode (synced with state)
 
     def __init__(self, tasks_file: str = DEFAULT_TASKS_FILE):
         """
@@ -360,6 +362,7 @@ class TodoTextualApp(App):
         self._note_table = None
         self._notes_filter_input = None
         self._main_container = None
+        self._left_panel_container = None  # NEW - Panel system container
 
         # Layout mode tracking for 4-state toggle
         self.layout_mode = LayoutMode.HORIZONTAL_SPLIT  # Default: 50:50 horizontal
@@ -398,17 +401,10 @@ class TodoTextualApp(App):
         with Vertical(id="app_layout"):
             # Content area with horizontal split (takes remaining space)
             with Horizontal(id="main_container"):
-                # Left side: Task table (70%)
-                with Vertical(id="task_container"):
-                    debug_log.info("Creating TaskTable widget...")
-                    yield TaskTable(id="task_table")
-                    debug_log.info("TaskTable created")
-                    debug_log.info("Creating NoteTable widget...")
-                    from textual.widgets import Input, Static
-                    self._notes_filter_input = Input(placeholder="Filter notes...", id="notes_filter")
-                    yield self._notes_filter_input
-                    yield NoteTable(id="note_table")
-                    debug_log.info("NoteTable created")
+                # Left side: LeftPanelContainer (dynamic panel switching)
+                debug_log.info("Creating LeftPanelContainer...")
+                yield LeftPanelContainer()
+                debug_log.info("LeftPanelContainer created")
 
                 # Right side: AI chat panel (30%, collapsible)
                 debug_log.info("Creating AIChatPanel widget...")
@@ -483,14 +479,18 @@ class TodoTextualApp(App):
             debug_log.error(f"Failed to load AI conversation: {e}", exception=e)
 
         # Cache widget references BEFORE calling refresh_table()
-        # This ensures refresh_table() has access to _task_table and _status_bar
+        # This ensures refresh_table() has access to widgets
         debug_log.info("Caching widget references...")
         try:
-            self._task_table = self.query_one(TaskTable)
-            try:
-                self._note_table = self.query_one(NoteTable)
-            except Exception:
-                self._note_table = None
+            # Cache LeftPanelContainer (NEW - panel system)
+            self._left_panel_container = self.query_one(LeftPanelContainer)
+            debug_log.info("LeftPanelContainer cached")
+
+            # Tables will be created dynamically by LeftPanelContainer
+            # Initially set to None, will be queried when needed
+            self._task_table = None
+            self._note_table = None
+
             self._status_bar = self.query_one(StatusBar)
             self._command_input = self.query_one(CommandInput)
             self._ai_input = self.query_one(AIInput)
@@ -500,7 +500,6 @@ class TodoTextualApp(App):
                 self._footer = None
 
             # Cache container references for layout management
-            self._task_container = self.query_one("#task_container")
             self._main_container = self.query_one("#main_container")
 
             # Cache AI panel reference (may fail if widget not mounted)
@@ -527,6 +526,15 @@ class TodoTextualApp(App):
         # Update reactive attributes
         self.tasks_count = len(self.state.tasks)
         self.page_number = self.state.page
+
+        # Initialize left panel with TaskTable (default LIST_TASKS mode)
+        debug_log.info("Initializing left panel container...")
+        if self._left_panel_container:
+            # Sync panel mode with state
+            from core.state import LeftPanelMode
+            self.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+            self._left_panel_container.current_mode = LeftPanelMode.LIST_TASKS
+            debug_log.info("Left panel initialized in LIST_TASKS mode")
 
         # Populate table (now has cached widget references)
         debug_log.info("Calling refresh_table() to populate UI...")
@@ -555,23 +563,13 @@ class TodoTextualApp(App):
         if self._ai_panel:
             self._ai_panel.display = self.ai_panel_visible
 
-        # Set initial focus to table
-        debug_log.info("Setting initial focus to task table...")
-        if self._task_table:
-            # Hide note table and filter initially when in tasks mode
-            if self.state.entity_mode == "tasks" and self._note_table:
-                self._note_table.display = False
-                if self._notes_filter_input:
-                    self._notes_filter_input.display = False
-            elif self.state.entity_mode == "notes" and self._note_table:
-                self._note_table.display = True
-                self._task_table.display = False
-                if self._notes_filter_input:
-                    self._notes_filter_input.display = True
-            self._task_table.focus()
-            debug_log.info("Initial focus set to task table")
+        # Set initial focus to left panel container
+        debug_log.info("Setting initial focus to left panel...")
+        if self._left_panel_container:
+            self._left_panel_container.focus()
+            debug_log.info("Initial focus set to left panel container")
         else:
-            debug_log.error("Cannot set focus - task table reference is None")
+            debug_log.error("Cannot set focus - left panel container is None")
 
         # Register signal handlers for graceful shutdown (Ctrl+C, kill)
         # Note: Using signal.signal() instead of asyncio's add_signal_handler()
@@ -590,6 +588,30 @@ class TodoTextualApp(App):
         debug_log.info("on_mount() COMPLETED - App should now be visible")
         debug_log.info("=" * 80)
 
+    def watch_left_panel_mode(self, old_mode, new_mode) -> None:
+        """
+        Reactive watcher - called when left_panel_mode changes
+
+        Syncs app reactive attribute with state and triggers panel switching
+
+        Args:
+            old_mode: Previous panel mode
+            new_mode: New panel mode
+        """
+        if new_mode is None:
+            return
+
+        debug_log.info(f"[APP] watch_left_panel_mode: {old_mode} → {new_mode}")
+
+        # Sync container if it exists
+        if self._left_panel_container:
+            self._left_panel_container.current_mode = new_mode
+            debug_log.info(f"[APP] LeftPanelContainer synced to mode: {new_mode}")
+
+        # Update status bar if needed
+        if self._status_bar:
+            self._status_bar.update_from_state(self.state)
+
     def refresh_table(self) -> None:
         """
         Refresh task table with current state
@@ -605,22 +627,29 @@ class TodoTextualApp(App):
 
         # Use cached widget references with null checks (safety)
         try:
-            # Update or toggle tables based on entity_mode
-            if self._task_table:
+            # With panel system, query tables dynamically (they're created by LeftPanelContainer)
+            from textual_widgets.task_table import TaskTable
+            task_tables = self.query(TaskTable)
+            if task_tables:
+                task_table = task_tables.first()
                 if self.state.entity_mode == "tasks":
-                    self._task_table.display = True
-                    self._task_table.update_from_state(self.state)
+                    task_table.display = True
+                    task_table.update_from_state(self.state)
                 else:
-                    self._task_table.display = False
+                    task_table.display = False
                 debug_log.debug(f"[APP] Task table updated/toggled successfully")
             else:
-                self.log.warning("Task table reference is None, skipping update")
+                debug_log.debug("Task table not found (may be in non-LIST mode)")
 
-            if self._note_table:
+            # Query note tables dynamically
+            from textual_widgets.note_table import NoteTable
+            note_tables = self.query(NoteTable)
+            if note_tables:
+                note_table = note_tables.first()
                 if self.state.entity_mode == "notes":
-                    self._note_table.display = True
+                    note_table.display = True
                     # Apply notes filter if present
-                    filter_value = self._notes_filter_input.value if self._notes_filter_input else ""
+                    filter_value = ""
                     notes = list(self.state.notes)
                     debug_log.debug(f"[APP] Notes in state: {len(notes)}; filter='{filter_value}'")
                     if filter_value:
@@ -633,16 +662,12 @@ class TodoTextualApp(App):
                             or n.id.startswith(q)
                         ]
                         debug_log.debug(f"[APP] Notes after filter: {len(notes)}")
-                    self._note_table.update_with_notes(notes)
-                    if self._notes_filter_input:
-                        self._notes_filter_input.display = True
+                    note_table.update_with_notes(notes)
                 else:
-                    self._note_table.display = False
-                    if self._notes_filter_input:
-                        self._notes_filter_input.display = False
+                    note_table.display = False
                 debug_log.debug("[APP] Note table updated/toggled successfully")
             else:
-                self.log.warning("Note table reference is None, skipping update")
+                debug_log.debug("Note table not found (may be in non-LIST mode)")
 
             if self._status_bar:
                 self._status_bar.update_from_state(self.state)
@@ -905,27 +930,19 @@ class TodoTextualApp(App):
             pass
 
     @work(exclusive=True)
-    async def action_add_task(self) -> None:
-        """Show add task modal form (runs as worker to support modal dialog)"""
-        # Get existing tags for suggestions
-        existing_tags = list(self.state._tag_index.keys()) if self.state._tag_index else []
+    def action_add_task(self) -> None:
+        """Switch to edit panel in create mode (NEW - panel system)"""
+        from core.state import LeftPanelMode
 
-        # Show form modal
-        result = await self.push_screen_wait(TaskForm(existing_tags=existing_tags))
+        # Set state for creating new task
+        self.state.edit_mode_is_new = True
+        self.state.selected_task_id = None
 
-        if result:
-            # Add task to state
-            self.state.add_task(
-                name=result["name"],
-                comment=result.get("comment", ""),
-                description=result.get("description", ""),
-                priority=result.get("priority", 2),
-                tag=result.get("tag", "")
-            )
+        # Switch to edit panel
+        self.state.left_panel_mode = LeftPanelMode.EDIT_TASK
+        self.left_panel_mode = LeftPanelMode.EDIT_TASK
 
-            # Refresh UI
-            self.refresh_table()
-            self.notify(f"✓ Task '{result['name'][:30]}...' added", severity="information")
+        debug_log.info("[APP] Switched to EDIT_TASK mode (create new)")
 
     @work(exclusive=True)
     async def action_edit_task(self) -> None:
@@ -1117,35 +1134,54 @@ class TodoTextualApp(App):
         self.notify(f"View: {self.state.view_mode}")
 
     @work(exclusive=True)
-    async def action_open_selected(self) -> None:
-        """Open detail for currently selected item in the active mode.
+    def action_open_selected(self) -> None:
+        """Open detail panel for currently selected item (NEW - panel system)
 
-        - In tasks mode: opens TaskDetailModal for selected task.
-        - In notes mode: opens NoteDetailModal for selected note.
+        - In tasks mode: switches to TaskDetailPanel
+        - In notes mode: switches to NoteDetailPanel
         """
-        # Validate entity_mode explicitly (prevent invalid states)
+        from core.state import LeftPanelMode
+
         mode = getattr(self.state, 'entity_mode', 'tasks')
-        debug_log.info(f"[APP] 📖 action_open_selected() CALLED (mode={mode})")
+        debug_log.info(f"[APP] action_open_selected() CALLED (mode={mode})")
 
-        if mode not in ('tasks', 'notes'):
-            debug_log.error(f"[APP] ❌ Invalid entity_mode: {mode}")
-            self.notify(f"Invalid mode: {mode}", severity="error")
-            return
-
-        # Focus guard: Enter only works when table has focus (atomic check)
         if mode == 'notes':
-            # Capture focus state atomically to prevent TOCTTOU race
-            has_focus = self._note_table and self._note_table.has_focus
-            if not has_focus:
-                debug_log.info(f"[APP] ⏎ ENTER IGNORED - note table not focused")
+            # Get selected note ID from note table
+            from textual_widgets.note_table import NoteTable
+            note_tables = self.query(NoteTable)
+            if not note_tables:
                 return
-            debug_log.info(f"[APP] Delegating to action_open_note() for notes mode")
-            self.action_open_note()  # Reverted - creates worker
+
+            note_table = note_tables.first()
+            note_id = note_table.get_selected_note_id()
+            if not note_id:
+                self.notify("No note selected", severity="warning")
+                return
+
+            # Switch to note detail panel
+            self.state.selected_note_id = note_id
+            self.state.left_panel_mode = LeftPanelMode.DETAIL_NOTE
+            self.left_panel_mode = LeftPanelMode.DETAIL_NOTE
+            debug_log.info(f"[APP] Switched to DETAIL_NOTE mode")
             return
 
-        # Tasks mode - inline logic to avoid worker-in-worker issue
-        # Capture focus state atomically
-        has_focus = self._task_table and self._task_table.has_focus
+        # Tasks mode
+        from textual_widgets.task_table import TaskTable
+        task_tables = self.query(TaskTable)
+        if not task_tables:
+            return
+
+        task_table = task_tables.first()
+        task_id = task_table.get_selected_task_id()
+        if not task_id:
+            self.notify("No task selected", severity="warning")
+            return
+
+        # Switch to task detail panel
+        self.state.selected_task_id = task_id
+        self.state.left_panel_mode = LeftPanelMode.DETAIL_TASK
+        self.left_panel_mode = LeftPanelMode.DETAIL_TASK
+        debug_log.info(f"[APP] Switched to DETAIL_TASK mode for task #{task_id}")
         if not has_focus:
             debug_log.info(f"[APP] ⏎ ENTER IGNORED - task table not focused")
             return
