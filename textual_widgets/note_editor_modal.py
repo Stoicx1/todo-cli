@@ -22,14 +22,6 @@ class NoteEditorModal(ModalScreen[Optional[Note]]):
     """
 
     DEFAULT_CSS = """
-    /* Local palette to match app (avoid undefined vars) */
-    $primary: #0891b2;
-    $secondary: #06b6d4;
-    $surface: #1e293b;
-    $panel: #334155;
-    $text: #f1f5f9;
-    $text-muted: #94a3b8;
-
     NoteEditorModal { align: center middle; }
     NoteEditorModal > Container {
         width: 90;

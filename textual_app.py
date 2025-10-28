@@ -62,239 +62,13 @@ class TodoTextualApp(App):
     # switch back to False and use Ctrl+Shift+Y (copy) instead.
     ENABLE_SELECTION = True
 
-    # CSS_PATH = "styles/main.tcss"  # Temporarily disabled - using inline CSS
-
-    CSS = """
-    /* Color Palette */
-    $primary: #0891b2;
-    $secondary: #06b6d4;
-    $surface: #1e293b;
-    $panel: #334155;
-    $background: #0f172a;
-    $text: #f1f5f9;
-    $text-muted: #94a3b8;
-
-    Screen {
-        background: $surface;
-    }
-
-    Header {
-        background: $primary;
-        color: $text;
-        height: 3;
-        content-align: center middle;
-    }
-
-    Header .header--title {
-        color: $text;
-        text-style: bold;
-    }
-
-    Footer, ContextFooter {
-        background: $primary;
-        color: $text;
-    }
-
-    /* Data Table */
-    DataTable {
-        height: 1fr;
-        border: solid cyan;
-        background: $surface;
-    }
-
-    DataTable:focus {
-        border: solid yellow;  /* Clear focus indicator */
-    }
-
-    DataTable > .datatable--header {
-        background: $primary;
-        color: $text;
-        text-style: bold;
-    }
-
-    DataTable > .datatable--cursor {
-        background: $secondary;
-        color: $text;
-    }
-
-    DataTable > .datatable--odd-row {
-        background: $surface;
-    }
-
-    DataTable > .datatable--even-row {
-        background: $panel;
-    }
-
-    /* Status Bar */
-    StatusBar {
-        height: 5;
-        min-height: 5;
-        border: solid cyan;
-        background: $panel;
-        padding: 0 2;
-        content-align: left top;
-    }
-
-    /* Buttons */
-    Button {
-        width: auto;
-        min-width: 12;
-        height: 3;
-        border: solid cyan;
-        background: $panel;
-        color: $text;
-    }
-
-    Button:hover {
-        background: cyan 20%;
-        border: solid cyan;
-    }
-
-    Button:focus {
-        background: cyan;
-        color: $background;
-        text-style: bold;
-    }
-
-    /* Input Fields */
-    Input {
-        border: solid cyan;
-        background: $surface;
-        color: $text;
-    }
-
-    Input:focus {
-        border: solid yellow;  /* Clear focus indicator */
-        background: $panel;
-    }
-
-    /* Command Input */
-    #command_input {
-        height: 3;
-        border: solid cyan;
-        background: $panel;
-        margin: 0;
-        padding: 0;
-    }
-
-    #command_input:focus {
-        border: solid yellow;  /* Clear focus indicator - changed from cyan */
-        background: $surface;
-    }
-
-    /* Modal Screens */
-    ModalScreen {
-        background: #000000 70%;
-    }
-
-    TaskForm Input.-invalid {
-        border: solid red;
-    }
-
-    TaskForm Select {
-        border: solid cyan;
-    }
-
-    ConfirmDialog Button#confirm {
-        background: red 30%;
-        color: white;
-    }
-
-    ConfirmDialog Button#confirm:hover {
-        background: red;
-    }
-
-    ConfirmDialog Button#cancel {
-        background: cyan 30%;
-    }
-
-    ConfirmDialog Button#cancel:hover {
-        background: cyan;
-    }
-
-    /* Main Layout */
-    #app_layout {
-        height: 1fr;
-        layout: vertical;
-    }
-
-    #main_container {
-        height: 1fr;
-        layout: horizontal;
-    }
-
-    #task_container {
-        /* width set dynamically via _apply_layout_mode() */
-        layout: vertical;
-    }
-
-    #bottom_section {
-        height: auto;
-        layout: vertical;
-        padding: 0;
-        margin: 0;
-    }
-
-    /* AI Chat Panel */
-    #ai_chat_panel {
-        /* width set dynamically via _apply_layout_mode() */
-        border: solid cyan;
-        background: $panel;
-        padding: 1;
-    }
-
-    #ai_chat_panel:focus {
-        border: solid yellow;  /* Clear focus indicator */
-    }
-
-    #ai_chat_panel .empty-state {
-        color: $text-muted;
-        text-align: center;
-        padding: 2;
-    }
-
-    MessageBubble {
-        padding: 1 2;
-        margin: 1 0;
-        border: solid #94a3b8;
-        background: $surface;
-        color: $text;
-    }
-
-    MessageBubble.user-message {
-        border: solid cyan;
-        background: cyan 10%;
-    }
-
-    MessageBubble.ai-message {
-        border: solid cyan;
-        background: cyan 10%;
-    }
-
-    MessageBubble:focus {
-        border: solid yellow;
-        background: yellow 15%;
-    }
-
-    /* AI Input */
-    #ai_input {
-        height: 3;
-        border: solid cyan;
-        background: $panel;
-        margin: 0;
-        padding: 0;
-    }
-
-    #ai_input:focus {
-        border: solid yellow;  /* Clear focus indicator */
-        background: $surface;
-    }
-    """
+    CSS_PATH = "styles/main.tcss"
 
     BINDINGS = [
         Binding("q", "quit", "Quit", priority=True),
         Binding("ctrl+k", "toggle_command_mode", "Command", show=True),
         Binding("/", "show_palette", "Palette", show=True),
+        Binding("ctrl+t", "toggle_theme", "Theme", show=True),
         Binding("a", "add_selected", "Add"),
         Binding("e", "edit_selected", "Edit"),
         Binding("x", "mark_done", "Done"),
@@ -328,6 +102,13 @@ class TodoTextualApp(App):
     filter_text = reactive("none")
     command_mode = reactive(False)  # Toggle command input visibility
     ai_panel_visible = reactive(True)  # AI chat panel visibility
+    _current_theme: str | None = None
+
+    # Available themes
+    _THEMES = {
+        "dark": "styles/main.tcss",
+        "light": "styles/theme-light.tcss",
+    }
     left_panel_mode = reactive(None, init=False)  # NEW - Panel system mode (synced with state)
 
     def __init__(self, tasks_file: str = DEFAULT_TASKS_FILE):
@@ -448,6 +229,12 @@ class TodoTextualApp(App):
             self.title = f"{self.TITLE} • v{ver}"
         except Exception:
             # Keep original title on failure; do not crash UI
+            pass
+
+        # Apply persisted theme (if any) early
+        try:
+            self._load_theme_preference()
+        except Exception:
             pass
 
         # Debug: Check if handlers exist
@@ -587,6 +374,74 @@ class TodoTextualApp(App):
         debug_log.info("=" * 80)
         debug_log.info("on_mount() COMPLETED - App should now be visible")
         debug_log.info("=" * 80)
+
+    # ------------------------------------------------------------------
+    # Theme switching
+    # ------------------------------------------------------------------
+    def _save_theme_preference(self) -> None:
+        from pathlib import Path
+        import json as _json
+        try:
+            from config import DEFAULT_SETTINGS_FILE
+            settings_path = Path(DEFAULT_SETTINGS_FILE)
+            existing: dict = {}
+            if settings_path.exists():
+                try:
+                    existing = _json.loads(settings_path.read_text(encoding="utf-8"))
+                except Exception:
+                    existing = {}
+            existing["theme"] = self._current_theme or "dark"
+            tmp = settings_path.with_suffix(settings_path.suffix + ".tmp")
+            tmp.write_text(_json.dumps(existing, indent=2), encoding="utf-8")
+            try:
+                import os as _os
+                _os.replace(tmp, settings_path)
+            except Exception:
+                settings_path.write_text(_json.dumps(existing, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
+    def _load_theme_preference(self) -> None:
+        from pathlib import Path
+        import json as _json
+        try:
+            from config import DEFAULT_SETTINGS_FILE
+            settings_path = Path(DEFAULT_SETTINGS_FILE)
+            if settings_path.exists():
+                data = _json.loads(settings_path.read_text(encoding="utf-8"))
+                name = (data.get("theme") or "dark").lower()
+                if name in self._THEMES:
+                    # Load preferred theme over default CSS_PATH
+                    self._current_theme = name
+                    self.load_css(path=self._THEMES[name], merge=False)
+        except Exception:
+            pass
+
+    def action_toggle_theme(self) -> None:
+        nxt = "light" if (self._current_theme or "dark") == "dark" else "dark"
+        self.action_switch_theme(nxt)
+
+    def action_switch_theme(self, theme: str) -> None:
+        name = (theme or "").strip().lower()
+        if name not in self._THEMES:
+            try:
+                self.console.print(f"[yellow]Unknown theme '{theme}'. Available: {', '.join(self._THEMES)}[/yellow]")
+            except Exception:
+                pass
+            return
+        try:
+            self.load_css(path=self._THEMES[name], merge=False)
+            self._current_theme = name
+            self._save_theme_preference()
+            try:
+                self.refresh()
+            except Exception:
+                pass
+        except Exception as e:
+            try:
+                self.console.print(f"[red]Failed to load theme '{name}': {e}[/red]")
+            except Exception:
+                pass
 
     def watch_left_panel_mode(self, old_mode, new_mode) -> None:
         """
@@ -729,6 +584,11 @@ class TodoTextualApp(App):
             self.notify("Screen refreshed")
             return
 
+        # Theme switch (runtime) via command: `theme dark|light`
+        if cmd == "theme" and len(parts) >= 2:
+            self.action_switch_theme(parts[1])
+            return
+
         # Route form commands to action methods (UX unification)
         if cmd in ("add", "a"):
             # Mode-aware: creates task or note based on entity_mode
@@ -798,21 +658,23 @@ class TodoTextualApp(App):
                 self.action_new_note()
                 return
             if len(parts) >= 3 and parts[1] == "edit":
+                # Switch to note edit panel
+                from core.state import LeftPanelMode
+                note_id = parts[2]
+
+                # Verify note exists
                 from services.notes import FileNoteRepository
                 from config import DEFAULT_NOTES_DIR
                 repo = FileNoteRepository(DEFAULT_NOTES_DIR)
-                n = repo.get(parts[2])
+                n = repo.get(note_id)
                 if not n:
-                    self.notify(f"Note {parts[2]} not found", severity="error")
+                    self.notify(f"Note {note_id} not found", severity="error")
                 else:
-                    async def _edit():
-                        edited = await self.push_screen_wait(NoteEditorModal(n))
-                        if isinstance(edited, type(n)):
-                            repo.update(edited)
-                            self.state.refresh_notes_from_disk()
-                            self.refresh_table()
-                            self.notify(f"Saved note {n.id[:8]}")
-                    self.call_later(_edit)
+                    self.state.selected_note_id = note_id
+                    self.state.edit_mode_is_new = False
+                    self.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
+                    self.left_panel_mode = LeftPanelMode.EDIT_NOTE
+                    debug_log.info(f"[APP] Switched to EDIT_NOTE mode for note {note_id[:8]}")
                 return
 
         # In notes mode, route edit/remove to note actions
@@ -929,7 +791,6 @@ class TodoTextualApp(App):
         except Exception:
             pass
 
-    @work(exclusive=True)
     def action_add_task(self) -> None:
         """Switch to edit panel in create mode (NEW - panel system)"""
         from core.state import LeftPanelMode
@@ -944,9 +805,8 @@ class TodoTextualApp(App):
 
         debug_log.info("[APP] Switched to EDIT_TASK mode (create new)")
 
-    @work(exclusive=True)
-    async def action_edit_task(self) -> None:
-        """Show edit task modal form (runs as worker to support modal dialog)"""
+    def action_edit_task(self) -> None:
+        """Switch to edit task panel for selected task"""
         task_id = self._task_table.get_selected_task_id()
 
         if task_id is None:
@@ -958,39 +818,17 @@ class TodoTextualApp(App):
             self.notify(f"Task #{task_id} not found", severity="error")
             return
 
-        # Get existing tags for suggestions
-        existing_tags = list(self.state._tag_index.keys()) if self.state._tag_index else []
+        # Switch to edit panel
+        self.state.selected_task_id = task_id
+        self.state.edit_mode_is_new = False
+        self.state.left_panel_mode = LeftPanelMode.EDIT_TASK
+        self.left_panel_mode = LeftPanelMode.EDIT_TASK
 
-        # Show form modal with pre-filled data
-        result = await self.push_screen_wait(TaskForm(task=task, existing_tags=existing_tags))
+        debug_log.info(f"[APP] Switched to EDIT_TASK mode for task #{task_id}")
 
-        if result:
-            # Store old tags for index update
-            old_tags = task.tags.copy()
-
-            # Update task
-            task.name = result["name"]
-            task.comment = result.get("comment", "")
-            task.description = result.get("description", "")
-            task.priority = result.get("priority", 2)
-            task.tag = result.get("tag", "")
-            task.tags = result.get("tags", [])
-
-            # Update indices
-            if self.state._task_index is not None:
-                self.state._task_index[task.id] = task
-
-            if task.tags != old_tags:
-                self.state._update_tag_index_for_task(task, old_tags)
-
-            # Refresh UI
-            self.refresh_table()
-            self.notify(f"✓ Task #{task_id} updated", severity="information")
-
-    @work(exclusive=True)
-    async def action_show_task(self, task_id: int) -> None:
+    def action_show_task(self, task_id: int) -> None:
         """
-        Show task details modal with edit option
+        Switch to task detail panel
 
         Args:
             task_id: ID of task to display
@@ -999,45 +837,13 @@ class TodoTextualApp(App):
         if not task:
             self.notify(f"Task #{task_id} not found", severity="error")
             return
-        # Track selected task for note linking/unlinking shortcuts
-        try:
-            self.state.selected_task_id = task_id
-        except Exception:
-            pass
 
-        # Show task detail modal
-        action = await self.push_screen_wait(TaskDetailModal(task))
+        # Switch to detail panel
+        self.state.selected_task_id = task_id
+        self.state.left_panel_mode = LeftPanelMode.DETAIL_TASK
+        self.left_panel_mode = LeftPanelMode.DETAIL_TASK
 
-        # If user wants to edit, open the edit form
-        if action == "edit":
-            # Get existing tags for suggestions
-            existing_tags = list(self.state._tag_index.keys()) if self.state._tag_index else []
-
-            # Show form modal with pre-filled data
-            result = await self.push_screen_wait(TaskForm(task=task, existing_tags=existing_tags))
-
-            if result:
-                # Store old tags for index update
-                old_tags = task.tags.copy()
-
-                # Update task
-                task.name = result["name"]
-                task.comment = result.get("comment", "")
-                task.description = result.get("description", "")
-                task.priority = result.get("priority", 2)
-                task.tag = result.get("tag", "")
-                task.tags = result.get("tags", [])
-
-                # Update indices
-                if self.state._task_index is not None:
-                    self.state._task_index[task.id] = task
-
-                if task.tags != old_tags:
-                    self.state._update_tag_index_for_task(task, old_tags)
-
-                # Refresh UI
-                self.refresh_table()
-                self.notify(f"✓ Task #{task_id} updated", severity="information")
+        debug_log.info(f"[APP] Switched to DETAIL_TASK mode for task #{task_id}")
 
     def action_mark_done(self) -> None:
         """Mark selected task as done"""
@@ -1133,7 +939,6 @@ class TodoTextualApp(App):
         self.refresh_table()
         self.notify(f"View: {self.state.view_mode}")
 
-    @work(exclusive=True)
     def action_open_selected(self) -> None:
         """Open detail panel for currently selected item (NEW - panel system)
 
@@ -1182,61 +987,6 @@ class TodoTextualApp(App):
         self.state.left_panel_mode = LeftPanelMode.DETAIL_TASK
         self.left_panel_mode = LeftPanelMode.DETAIL_TASK
         debug_log.info(f"[APP] Switched to DETAIL_TASK mode for task #{task_id}")
-        if not has_focus:
-            debug_log.info(f"[APP] ⏎ ENTER IGNORED - task table not focused")
-            return
-
-        if not self._task_table:
-            debug_log.info(f"[APP] ❌ No task table reference")
-            return
-
-        # Get selected task with exception handling
-        try:
-            tid = self._task_table.get_selected_task_id()
-            debug_log.info(f"[APP] Selected task ID: {tid}")
-        except Exception as e:
-            debug_log.error(f"[APP] Failed to get selected task: {e}", exception=e)
-            self.notify("Error accessing selected task", severity="error")
-            return
-
-        if tid is None:
-            debug_log.info(f"[APP] ❌ No task selected")
-            self.notify("No task selected", severity="warning")
-            return
-
-        task = self.state.get_task_by_id(tid)
-        if not task:
-            debug_log.info(f"[APP] ❌ Task #{tid} not found in state")
-            self.notify(f"Task #{tid} not found", severity="error")
-            return
-
-        debug_log.info(f"[APP] ✅ Opening TaskDetailModal for task #{tid}")
-
-        # Track selected task for note linking/unlinking shortcuts
-        try:
-            self.state.selected_task_id = tid
-        except Exception:
-            pass
-
-        # Re-verify focus before modal (defense against race condition)
-        if not self._task_table.has_focus:
-            debug_log.info(f"[APP] ⚠️  Focus lost before modal - aborting")
-            return
-
-        # Show task detail modal directly (await within worker context)
-        debug_log.info(f"[APP] ⏸️  BEFORE push_screen_wait() - showing modal")
-        await self.push_screen_wait(TaskDetailModal(task))
-        debug_log.info(f"[APP] ▶️  AFTER push_screen_wait() - modal closed")
-
-        # After closing, restore selection and focus (Textual handles CSS automatically)
-        try:
-            if self._task_table:
-                debug_log.info(f"[APP] 🔧 Restoring selection and focus to task #{tid}")
-                self._task_table.select_task_by_id(tid)
-                self._task_table.focus()
-                debug_log.info(f"[APP] ✅ Focus restored to task table")
-        except Exception as e:
-            debug_log.warning(f"[APP] Failed to restore focus: {e}")
 
     def action_refresh(self) -> None:
         """Refresh display"""
@@ -1257,39 +1007,31 @@ class TodoTextualApp(App):
         self.refresh_table()
         self.notify(f"Sort: {self.state.sort}")
 
-    @work(exclusive=True)
-    async def action_edit_selected(self) -> None:
-        """Edit the currently selected item based on mode.
-
-        - In tasks mode: opens TaskForm for selected task (existing behavior).
-        - In notes mode: opens NoteEditorModal for selected note and saves on save.
-        """
+    def action_edit_selected(self) -> None:
+        """Edit the currently selected item based on mode - switches to edit panel"""
         if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
+            # Notes mode - switch to note edit panel
             if not self._note_table:
                 return
             note_id = self._note_table.get_selected_note_id()
             if not note_id:
                 self.notify("No note selected", severity="warning")
                 return
-            from services.notes import FileNoteRepository
-            from config import DEFAULT_NOTES_DIR
-            repo = FileNoteRepository(DEFAULT_NOTES_DIR)
-            n = repo.get(note_id)
-            if not n:
-                self.notify("Note not found", severity="error")
-                return
-            edited = await self.push_screen_wait(NoteEditorModal(n))
-            if isinstance(edited, type(n)):
-                repo.update(edited)
-                self.state.refresh_notes_from_disk()
-                self.refresh_table()
-                self.notify(f"Saved note {n.id[:8]}")
+
+            # Switch to note edit panel
+            from core.state import LeftPanelMode
+            self.state.selected_note_id = note_id
+            self.state.edit_mode_is_new = False
+            self.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
+            self.left_panel_mode = LeftPanelMode.EDIT_NOTE
+
+            debug_log.info(f"[APP] Switched to EDIT_NOTE mode for note {note_id[:8]}")
             return
 
-        # Tasks mode
+        # Tasks mode - delegate to action_edit_task
         self.action_edit_task()
 
-    async def action_delete_selected(self) -> None:
+    def action_delete_selected(self) -> None:
         """Delete currently selected entity based on mode."""
         if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
             self.action_delete_note()
@@ -1297,7 +1039,7 @@ class TodoTextualApp(App):
         # Tasks mode
         self.action_delete_task()
 
-    async def action_add_selected(self) -> None:
+    def action_add_selected(self) -> None:
         """Add new entity based on current mode.
 
         - In notes mode: creates a new note (opens NoteEditorModal).
@@ -1332,25 +1074,20 @@ class TodoTextualApp(App):
             return None
         return note_id
 
-    @work(exclusive=True)
-    async def action_edit_note(self) -> None:
-        from services.notes import FileNoteRepository
-        from config import DEFAULT_NOTES_DIR
+    def action_edit_note(self) -> None:
+        """Switch to edit note panel for selected note"""
         note_id = self._ensure_note_selection()
         if not note_id:
             return
-        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
-        n = repo.get(note_id)
-        if not n:
-            self.notify(f"Note {note_id} not found", severity="error")
-            return
-        # Replace external editor with in-app editor for consistency
-        edited = await self.push_screen_wait(NoteEditorModal(n))
-        if isinstance(edited, type(n)):
-            repo.update(edited)
-        self.state.refresh_notes_from_disk()
-        self.refresh_table()
-        self.notify(f"Edited note {n.id[:8]}")
+
+        # Switch to note edit panel
+        from core.state import LeftPanelMode
+        self.state.selected_note_id = note_id
+        self.state.edit_mode_is_new = False
+        self.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
+        self.left_panel_mode = LeftPanelMode.EDIT_NOTE
+
+        debug_log.info(f"[APP] Switched to EDIT_NOTE mode for note {note_id[:8]}")
 
     @work(exclusive=True)
     async def action_link_note(self) -> None:
@@ -1407,9 +1144,8 @@ class TodoTextualApp(App):
         self.refresh_table()
         self.notify(f"Unlinked note {n.id[:8]} from task {task_id}")
 
-    @work(exclusive=True)
-    async def action_open_note(self, note_id: str | None = None) -> None:
-        # Open note detail modal, allow editing with 'e'
+    def action_open_note(self, note_id: str | None = None) -> None:
+        """Switch to note detail panel"""
         if self.state.entity_mode != "notes" or not self._note_table:
             return
         if not note_id:
@@ -1417,87 +1153,27 @@ class TodoTextualApp(App):
         if not note_id:
             self.notify("No note selected", severity="warning")
             return
-        from services.notes import FileNoteRepository
-        from config import DEFAULT_NOTES_DIR
-        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
-        n = repo.get(note_id)
-        if not n:
-            self.notify("Note not found", severity="error")
-            return
-        result = await self.push_screen_wait(NoteDetailModal(n))
-        if result == "edit":
-            editor_result = await self.push_screen_wait(NoteEditorModal(n))
-            if isinstance(editor_result, type(n)):
-                repo.update(editor_result)
-                self.state.refresh_notes_from_disk()
-                self.refresh_table()
-                self.notify(f"Saved note {n.id[:8]}")
-        elif result == "link":
-            tasks = self.state.get_filter_tasks(self.state.tasks)
-            pick = await self.push_screen_wait(LinkTaskPicker(tasks))
-            if pick is not None:
-                repo.link_task(n, int(pick))
-                self.state.refresh_notes_from_disk()
-                self.refresh_table()
-                self.notify(f"Linked note {n.id[:8]} to task {pick}")
-        elif isinstance(result, str) and result.startswith("unlink:"):
-            tid = result.split(":", 1)[1]
-            try:
-                repo.unlink_task(n, int(tid))
-                self.state.refresh_notes_from_disk()
-                self.refresh_table()
-                self.notify(f"Unlinked note {n.id[:8]} from task {tid}")
-            except Exception:
-                self.notify("Unlink failed", severity="error")
 
-        # After closing note modal, re-focus notes table and restore selection
-        try:
-            if self._note_table:
-                self._note_table.select_note_by_id(n.id)
-                self._note_table.focus()
-        except Exception:
-            pass
+        # Switch to note detail panel
+        from core.state import LeftPanelMode
+        self.state.selected_note_id = note_id
+        self.state.left_panel_mode = LeftPanelMode.DETAIL_NOTE
+        self.left_panel_mode = LeftPanelMode.DETAIL_NOTE
 
-    @work(exclusive=True)
-    async def action_new_note(self) -> None:
-        """Create a new note using only the in-app editor (no title prompt)."""
-        from services.notes import FileNoteRepository
-        from config import DEFAULT_NOTES_DIR
-        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+        debug_log.info(f"[APP] Switched to DETAIL_NOTE mode for note {note_id[:8]}")
 
-        # Link to selected task if any (when starting from tasks mode)
-        task_ids = []
-        if self.state.entity_mode == "tasks" and self._task_table:
-            tid = self._task_table.get_selected_task_id()
-            if tid is not None:
-                task_ids = [tid]
-        # Create with a default title; the editor will update it
-        note = repo.create(title="New Note", task_ids=task_ids)
-        # Open internal editor modal with is_new=True
-        edited = await self.push_screen_wait(NoteEditorModal(note, is_new=True))
+    def action_new_note(self) -> None:
+        """Switch to edit panel in create mode for new note"""
+        from core.state import LeftPanelMode
 
-        # If user canceled (Esc), delete the note
-        if edited is None:
-            try:
-                repo.delete(note.id)
-            except Exception:
-                pass  # Note may not exist, ignore
-        elif isinstance(edited, type(note)):
-            # User saved - update the note
-            repo.update(edited)
-
-        self.state.refresh_notes_from_disk()
+        # Switch to notes mode and edit panel
         self.state.entity_mode = "notes"
-        self.refresh_table()
+        self.state.edit_mode_is_new = True
+        self.state.selected_note_id = None  # No existing note
+        self.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
+        self.left_panel_mode = LeftPanelMode.EDIT_NOTE
 
-        # Only select and notify if note was saved (not canceled)
-        if edited is not None and self._note_table:
-            try:
-                self._note_table.select_note_by_id(note.id)
-                self._note_table.focus()
-            except Exception:
-                pass
-            self.notify(f"Created note {note.id[:8]}")
+        debug_log.info("[APP] Switched to EDIT_NOTE mode (create new)")
 
     @work(exclusive=True)
     async def action_delete_note(self) -> None:
@@ -1560,47 +1236,18 @@ class TodoTextualApp(App):
                 pass
         self.notify(f"Duplicated note {src.id[:8]} → {new.id[:8]}")
 
-    @work(exclusive=True)
-    async def action_quick_note(self) -> None:
-        """Create a quick note and open the in-app editor; link to selected task if any."""
-        from services.notes import FileNoteRepository
-        from config import DEFAULT_NOTES_DIR
-        repo = FileNoteRepository(DEFAULT_NOTES_DIR)
+    def action_quick_note(self) -> None:
+        """Create a quick note - switches to edit panel (same as action_new_note)"""
+        from core.state import LeftPanelMode
 
-        # Link to selected task if available
-        link_tid = None
-        if self.state.entity_mode == "tasks" and self._task_table:
-            link_tid = self._task_table.get_selected_task_id()
-        if link_tid is None:
-            link_tid = getattr(self.state, 'selected_task_id', None)
-
-        # Create with default title (user updates in editor)
-        note = repo.create(title="Quick Note", task_ids=[link_tid] if link_tid else [])
-        # Open editor with is_new=True
-        edited = await self.push_screen_wait(NoteEditorModal(note, is_new=True))
-
-        # If user canceled (Esc), delete the note
-        if edited is None:
-            try:
-                repo.delete(note.id)
-            except Exception:
-                pass  # Note may not exist, ignore
-        elif isinstance(edited, type(note)):
-            # User saved - update the note
-            repo.update(edited)
-
-        self.state.refresh_notes_from_disk()
+        # Switch to notes mode and edit panel
         self.state.entity_mode = "notes"
-        self.refresh_table()
+        self.state.edit_mode_is_new = True
+        self.state.selected_note_id = None
+        self.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
+        self.left_panel_mode = LeftPanelMode.EDIT_NOTE
 
-        # Only select and notify if note was saved (not canceled)
-        if edited is not None and self._note_table:
-            try:
-                self._note_table.select_note_by_id(note.id)
-                self._note_table.focus()
-            except Exception:
-                pass
-            self.notify(f"Quick note {note.id[:8]} created")
+        debug_log.info("[APP] Switched to EDIT_NOTE mode (quick note)")
 
     # Update footer on focus changes
     def on_focus(self, event) -> None:

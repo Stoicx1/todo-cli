@@ -420,20 +420,28 @@ class AppState:
     def _save_preferences(self) -> None:
         try:
             settings_path = Path(DEFAULT_SETTINGS_FILE)
+            # Merge with existing settings to preserve unrelated keys (e.g., theme)
+            existing: dict = {}
+            try:
+                if settings_path.exists():
+                    existing = json.loads(settings_path.read_text(encoding="utf-8"))
+            except Exception:
+                existing = {}
             data = {
                 "sort": getattr(self, "sort", "priority"),
                 "sort_order": getattr(self, "sort_order", "asc"),
                 "view_mode": getattr(self, "view_mode", "compact"),
                 "filter": getattr(self, "filter", "none"),
             }
+            merged = {**existing, **data}
             tmp = settings_path.with_suffix(settings_path.suffix + ".tmp")
-            tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            tmp.write_text(json.dumps(merged, indent=2), encoding="utf-8")
             try:
                 import os as _os
 
                 _os.replace(tmp, settings_path)
             except Exception:
-                settings_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                settings_path.write_text(json.dumps(merged, indent=2), encoding="utf-8")
         except Exception:
             pass
 
