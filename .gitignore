@@ -19,5 +19,8 @@ tasks.json.backup*
 .vscode/
 .idea/
 
+# Claude Code
+.claude/settings.local.json
+
 nul
 tmp_*.txt
