@@ -742,7 +742,7 @@ def get_task_statistics() -> str:
 @tool
 def save_all_changes() -> str:
     """
-    Explicitly save all tasks and notes to disk.
+    Explicitly save all tasks and notes to files.
 
     Use this when:
     - User explicitly asks to "save" or "persist" changes
@@ -752,7 +752,7 @@ def save_all_changes() -> str:
     Note: Most operations auto-save, but this provides explicit confirmation.
 
     Returns:
-        Success message confirming tasks and notes were saved
+        Success message with file name and counts
 
     Example:
         save_all_changes()
@@ -760,9 +760,10 @@ def save_all_changes() -> str:
     debug_log.debug("[AI_TOOLS] save_all_changes() called")
 
     try:
+        from config import DEFAULT_TASKS_FILE
         state = _get_state()
 
-        # Save tasks to disk
+        # Save tasks to file
         _save_tasks()
         task_count = len(state.tasks)
 
@@ -772,7 +773,7 @@ def save_all_changes() -> str:
 
         debug_log.info(f"[AI_TOOLS] save_all_changes() completed - {task_count} tasks, {note_count} notes")
 
-        return f"✅ All changes saved to disk\n   Tasks: {task_count}\n   Notes: {note_count}"
+        return f"✅ All changes saved\n   File: {DEFAULT_TASKS_FILE}\n   Tasks: {task_count}\n   Notes: {note_count}"
 
     except Exception as e:
         debug_log.error(f"[AI_TOOLS] save_all_changes() failed: {str(e)}", exception=e)
