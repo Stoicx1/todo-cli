@@ -62,7 +62,7 @@ class TodoTextualApp(App):
     # switch back to False and use Ctrl+Shift+Y (copy) instead.
     ENABLE_SELECTION = True
 
-    CSS_PATH = "styles/main.tcss"
+    CSS_PATH = "styles/theme-default-safe.tcss"
 
     BINDINGS = [
         Binding("q", "quit", "Quit", priority=True),
@@ -106,7 +106,7 @@ class TodoTextualApp(App):
 
     # Available themes
     _THEMES = {
-        "dark": "styles/main.tcss",
+        "dark": "styles/theme-default-safe.tcss",
         "light": "styles/theme-light.tcss",
     }
     left_panel_mode = reactive(None, init=False)  # NEW - Panel system mode (synced with state)
@@ -1526,14 +1526,23 @@ Ctrl+Shift+C - Clear AI q - Quit
             debug_log.debug("[STEP 12] Showing streaming indicator...")
             self.call_from_thread(ai_panel.show_streaming_indicator)
 
+            # Show initial status: Thinking
+            debug_log.debug("[STEP 12] Adding 'Thinking...' status message...")
+            self.call_from_thread(ai_panel.add_status_message, "🤔 Thinking...")
+
             # Initialize assistant (optional)
             debug_log.debug("[STEP 12] Initializing Assistant...")
             try:
                 from assistant import Assistant  # type: ignore
+
+                # Update status: Loading AI agent
+                self.call_from_thread(ai_panel.update_status_message, "🧠 Loading AI agent...")
+
                 assistant = Assistant(state=self.state)
                 debug_log.debug(f"[STEP 12] Assistant initialized: {type(assistant).__name__}")
             except Exception as e:
                 debug_log.warning(f"[STEP 12] Assistant unavailable: {e}")
+                self.call_from_thread(ai_panel.remove_status_messages)
                 self.call_from_thread(ai_panel.hide_streaming_indicator)
                 self.call_from_thread(self.notify, "AI assistant not available", severity="warning")
                 return
@@ -1542,6 +1551,9 @@ Ctrl+Shift+C - Clear AI q - Quit
             debug_log.debug("[STEP 12] Getting conversation context...")
             conversation_context = self.state.get_conversation_context(max_messages=20)
             debug_log.debug(f"[STEP 12] Context messages: {len(conversation_context)}")
+
+            # Update status: Processing request
+            self.call_from_thread(ai_panel.update_status_message, "⚡ Processing request...")
 
             # Create assistant message placeholder (on main thread)
             debug_log.debug("[STEP 12] Creating assistant message placeholder...")
@@ -1558,12 +1570,19 @@ Ctrl+Shift+C - Clear AI q - Quit
             # Use LangChain agent with streaming callback
             debug_log.debug("[STEP 12] Starting LangChain agent with streaming...")
             chunk_count = 0
+            first_chunk = True  # Track first chunk to remove status messages
 
             def streaming_callback(chunk):
                 """Streaming callback for agent responses"""
-                nonlocal chunk_count, response_content
+                nonlocal chunk_count, response_content, first_chunk
                 chunk_count += 1
                 response_content += chunk
+
+                # Remove status messages on first chunk (response is starting)
+                if first_chunk:
+                    first_chunk = False
+                    debug_log.debug("[STEP 12] First chunk received - removing status messages")
+                    self.call_from_thread(ai_panel.remove_status_messages)
 
                 # Log every 10th chunk
                 if chunk_count % 10 == 0:
@@ -1605,6 +1624,9 @@ Ctrl+Shift+C - Clear AI q - Quit
 
         except Exception as e:
             debug_log.error(f"[STEP 12] Worker failed: {type(e).__name__}: {str(e)}", exception=e)
+
+            # Remove status messages on error
+            self.call_from_thread(ai_panel.remove_status_messages)
 
             # Hide streaming indicator
             self.call_from_thread(ai_panel.hide_streaming_indicator)

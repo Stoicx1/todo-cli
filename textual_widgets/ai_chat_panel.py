@@ -32,6 +32,14 @@ class MessageBubble(Static):
 
     def update_content(self):
         """Render message content"""
+        # Status messages: different styling (no header, dim)
+        if self.message.is_status:
+            self.add_class("status-message")
+            # Status messages: dim, italic, no header/timestamp
+            self.update(f"[dim italic]{self.message.content}[/dim italic]")
+            return
+
+        # Regular messages: full formatting
         # Use simple text instead of emojis for Windows compatibility
         role_icon = "[USER]" if self.message.role == "user" else "[AI]"
         role_label = "You" if self.message.role == "user" else "Assistant"
@@ -269,6 +277,86 @@ class AIChatPanel(VerticalScroll):
         """Hide streaming indicator"""
         self.is_streaming = False
         self.border_title = "💬 AI Chat"
+
+    def add_status_message(self, text: str):
+        """
+        Add a temporary status message (e.g., "Thinking...", "Using tool: X")
+
+        Status messages:
+        - Are temporary and removed when real content arrives
+        - Don't persist to conversation history
+        - Styled differently (dim, italic)
+
+        Args:
+            text: Status message text (e.g., "🤔 Thinking...")
+        """
+        # Create status message
+        status_msg = AIMessage(
+            role="assistant",
+            content=text,
+            is_status=True
+        )
+
+        # Add to state conversation temporarily (for UI rendering)
+        self.state.ai_conversation.append(status_msg)
+
+        # Mount status bubble
+        bubble = MessageBubble(status_msg)
+        self.mount(bubble)
+
+        # Scroll to bottom
+        self.scroll_end(animate=False)
+
+    def remove_status_messages(self):
+        """
+        Remove all temporary status messages
+
+        Called when actual response streaming begins, to replace
+        status indicators with real content.
+        """
+        # Remove from state
+        self.state.ai_conversation = [
+            msg for msg in self.state.ai_conversation
+            if not msg.is_status
+        ]
+
+        # Remove status bubbles from UI
+        bubbles = list(self.query(MessageBubble))
+        for bubble in bubbles:
+            if bubble.message.is_status:
+                try:
+                    bubble.remove()
+                except Exception:
+                    pass
+
+    def update_status_message(self, text: str):
+        """
+        Update the last status message text (if exists)
+
+        Useful for replacing "Thinking..." with "Using tool: X"
+
+        Args:
+            text: New status message text
+        """
+        if not self.state.ai_conversation:
+            # No messages yet, just add new status
+            self.add_status_message(text)
+            return
+
+        last_msg = self.state.ai_conversation[-1]
+        if last_msg.is_status:
+            # Update existing status message
+            last_msg.content = text
+
+            # Update UI
+            bubbles = list(self.query(MessageBubble))
+            if bubbles:
+                last_bubble = bubbles[-1]
+                if last_bubble.message.is_status:
+                    last_bubble.update_content()
+        else:
+            # Last message is not status, add new one
+            self.add_status_message(text)
 
     def get_stats(self) -> str:
         """Get conversation stats for display"""

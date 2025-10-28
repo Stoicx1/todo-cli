@@ -18,11 +18,13 @@ class AIMessage:
         content: The message text
         timestamp: When the message was created
         token_count: Estimated tokens used (for API cost tracking)
+        is_status: Whether this is a temporary status message (e.g., "Thinking...")
     """
     role: Literal["user", "assistant"]
     content: str
     timestamp: str = ""  # ISO format timestamp
     token_count: int = 0  # Estimated tokens (rough: len(content) // 4)
+    is_status: bool = False  # True for temporary status indicators
 
     def __post_init__(self):
         """Set timestamp if not provided"""
@@ -40,7 +42,8 @@ class AIMessage:
             "role": self.role,
             "content": self.content,
             "timestamp": self.timestamp,
-            "token_count": self.token_count
+            "token_count": self.token_count,
+            "is_status": self.is_status
         }
 
     @classmethod
@@ -50,7 +53,8 @@ class AIMessage:
             role=data["role"],
             content=data["content"],
             timestamp=data.get("timestamp", ""),
-            token_count=data.get("token_count", 0)
+            token_count=data.get("token_count", 0),
+            is_status=data.get("is_status", False)
         )
 
     def format_for_display(self, max_width: int = 80) -> str:
