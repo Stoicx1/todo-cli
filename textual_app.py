@@ -43,6 +43,143 @@ class LayoutMode(Enum):
     VERTICAL_SPLIT = 4
 
 
+# Module-level CSS theme constants (loaded programmatically, not as class variable)
+# This prevents Textual from auto-loading a default theme that conflicts with user preference
+_CSS_DARK_THEME = """
+/*
+Textual CSS Styling for Todo CLI
+Dark theme (safe, no experimental properties)
+*/
+
+/* Color palette */
+$primary: #0891b2;
+$secondary: #06b6d4;
+$surface: #1e293b;
+$panel: #334155;
+$background: #0f172a;
+$text: #f1f5f9;
+$text-muted: #94a3b8;
+
+Screen { background: $surface; }
+
+#app_layout { height: 100vh; layout: vertical; }
+#bottom_section { height: auto; layout: vertical; }
+
+Header { background: $primary; color: $text; height: 3; content-align: center middle; }
+Header .header--title { color: $text; text-style: bold; }
+
+DataTable { height: 1fr; border: solid cyan; background: $surface; }
+DataTable > .datatable--header { background: $primary; color: $text; text-style: bold; }
+DataTable > .datatable--cursor { background: $secondary; color: $text; }
+DataTable:focus > .datatable--cursor { background: cyan 20%; color: $text; text-style: bold; }
+DataTable > .datatable--odd-row { background: $surface; }
+DataTable > .datatable--even-row { background: $panel; }
+
+StatusBar { height: 4; border: solid cyan; background: $panel; padding: 1 2; content-align: left middle; }
+
+Footer { background: $primary; color: $text; }
+
+Button { width: auto; min-width: 12; height: 3; border: solid cyan; background: $panel; color: $text; }
+Button:hover { background: cyan 20%; border: solid cyan; }
+Button:focus { background: cyan; color: $background; text-style: bold; }
+
+Input { border: solid cyan; background: $surface; color: $text; }
+Input:focus { border: solid cyan; background: $panel; }
+
+#command_input { height: 3; border: solid cyan; background: $panel; dock: bottom; margin: 0 0 1 0; }
+#command_input:focus { border: solid cyan; background: $surface; }
+
+ModalScreen { background: #000000 70%; }
+TaskForm Input.-invalid { border: solid red; }
+TaskForm Select { border: solid cyan; }
+ConfirmDialog Button#confirm { background: red 30%; color: white; }
+ConfirmDialog Button#confirm:hover { background: red; }
+ConfirmDialog Button#cancel { background: cyan 30%; }
+ConfirmDialog Button#cancel:hover { background: cyan; }
+
+#main_container { height: 1fr; layout: horizontal; }
+
+LeftPanelContainer { width: 70%; height: 1fr; }
+
+#ai_chat_panel { width: 30%; height: 1fr; border: solid cyan; background: $panel; padding: 1; }
+#ai_chat_panel .empty-state { color: $text-muted; text-align: center; padding: 2; }
+
+MessageBubble { padding: 1 2; margin: 1 0; border: solid #94a3b8; background: $surface; color: $text; }
+MessageBubble.user-message { border: solid cyan; background: cyan 10%; }
+MessageBubble.ai-message { border: solid cyan; background: cyan 10%; }
+
+#ai_input { height: 3; border: solid cyan; background: $panel; dock: bottom; margin: 1 0; }
+#ai_input:focus { border: solid cyan; background: $surface; }
+"""
+
+_CSS_LIGHT_THEME = """
+/*
+Textual CSS Styling for Todo CLI
+Light theme variant (cyan accents)
+*/
+
+/* Color palette */
+$primary: #0891b2;
+$secondary: #06b6d4;
+$surface: #f8fafc;
+$panel: #e2e8f0;
+$background: #ffffff;
+$text: #0f172a;
+$text-muted: #475569;
+
+Screen { background: $surface; }
+
+#app_layout { height: 100vh; layout: vertical; }
+#bottom_section { height: auto; layout: vertical; }
+
+Header { background: $primary; color: $text; height: 3; content-align: center middle; }
+Header .header--title { color: $text; text-style: bold; }
+
+DataTable { height: 1fr; border: solid $secondary; background: $surface; }
+DataTable > .datatable--header { background: $primary; color: $text; text-style: bold; }
+DataTable > .datatable--cursor { background: $secondary; color: $text; }
+DataTable:focus > .datatable--cursor { background: $secondary 20%; color: $text; text-style: bold; }
+DataTable > .datatable--odd-row { background: $surface; }
+DataTable > .datatable--even-row { background: $panel; }
+
+StatusBar { height: 4; border: solid $secondary; background: $panel; padding: 1 2; content-align: left middle; color: $text; }
+
+Footer { background: $primary; color: $text; }
+
+Button { width: auto; min-width: 12; height: 3; border: solid $secondary; background: $panel; color: $text; }
+Button:hover { background: $secondary 20%; border: solid $secondary; }
+Button:focus { background: $secondary; color: $background; text-style: bold; }
+
+Input { border: solid $secondary; background: $surface; color: $text; }
+Input:focus { border: solid $secondary; background: $panel; }
+
+#command_input { height: 3; border: solid $secondary; background: $panel; dock: bottom; margin: 0 0 1 0; }
+#command_input:focus { border: solid $secondary; background: $surface; }
+
+ModalScreen { background: #000000 40%; }
+TaskForm Input.-invalid { border: solid red; }
+TaskForm Select { border: solid $secondary; }
+ConfirmDialog Button#confirm { background: red 30%; color: white; }
+ConfirmDialog Button#confirm:hover { background: red; }
+ConfirmDialog Button#cancel { background: $secondary 30%; }
+ConfirmDialog Button#cancel:hover { background: $secondary; }
+
+#main_container { height: 1fr; layout: horizontal; }
+
+LeftPanelContainer { width: 70%; height: 1fr; }
+
+#ai_chat_panel { width: 30%; height: 1fr; border: solid $secondary; background: $panel; padding: 1; color: $text; }
+#ai_chat_panel .empty-state { color: $text-muted; text-align: center; padding: 2; }
+
+MessageBubble { padding: 1 2; margin: 1 0; border: solid #94a3b8; background: $surface; color: $text; }
+MessageBubble.user-message { border: solid $secondary; background: $secondary 10%; }
+MessageBubble.ai-message { border: solid $secondary; background: $secondary 10%; }
+
+#ai_input { height: 3; border: solid $secondary; background: $panel; dock: bottom; margin: 1 0; }
+#ai_input:focus { border: solid $secondary; background: $surface; }
+"""
+
+
 class TodoTextualApp(App):
     """
     Modern Textual-based Todo CLI Application
@@ -62,7 +199,9 @@ class TodoTextualApp(App):
     # switch back to False and use Ctrl+Shift+Y (copy) instead.
     ENABLE_SELECTION = True
 
-    CSS_PATH = "styles/theme-default-safe.tcss"
+    # NOTE: CSS is NOT defined as a class variable (see CLAUDE.md)
+    # Themes are loaded programmatically in on_mount() to prevent
+    # Textual from auto-loading a default theme that conflicts with user preference
 
     BINDINGS = [
         Binding("q", "quit", "Quit", priority=True),
@@ -104,10 +243,10 @@ class TodoTextualApp(App):
     ai_panel_visible = reactive(True)  # AI chat panel visibility
     _current_theme: str | None = None
 
-    # Available themes
+    # Available themes (references module-level constants)
     _THEMES = {
-        "dark": "styles/theme-default-safe.tcss",
-        "light": "styles/theme-light.tcss",
+        "dark": _CSS_DARK_THEME,  # References module-level dark theme constant
+        "light": _CSS_LIGHT_THEME,  # References module-level light theme constant
     }
     left_panel_mode = reactive(None, init=False)  # NEW - Panel system mode (synced with state)
 
@@ -402,20 +541,40 @@ class TodoTextualApp(App):
             pass
 
     def _load_theme_preference(self) -> None:
+        """
+        Load theme preference from settings and apply it.
+
+        If no preference exists or loading fails, apply default "dark" theme.
+        This ensures a theme is ALWAYS applied at startup, preventing Textual
+        from using any class-level CSS (which doesn't exist anymore).
+        """
         from pathlib import Path
         import json as _json
+
+        # Default theme if no preference found
+        theme_name = "dark"
+
         try:
             from config import DEFAULT_SETTINGS_FILE
             settings_path = Path(DEFAULT_SETTINGS_FILE)
             if settings_path.exists():
                 data = _json.loads(settings_path.read_text(encoding="utf-8"))
-                name = (data.get("theme") or "dark").lower()
-                if name in self._THEMES:
-                    # Load preferred theme over default CSS_PATH
-                    self._current_theme = name
-                    self.load_css(path=self._THEMES[name], merge=False)
+                saved_theme = (data.get("theme") or "dark").lower()
+                if saved_theme in self._THEMES:
+                    theme_name = saved_theme
         except Exception:
+            # If any error, use default theme
             pass
+
+        # ALWAYS apply a theme (either saved preference or default)
+        try:
+            self._current_theme = theme_name
+            # Clear existing CSS and add new theme source
+            self.stylesheet.add_source(self._THEMES[theme_name])
+            self.stylesheet.parse()  # Parse the added source
+            debug_log.info(f"Theme loaded: {theme_name}")
+        except Exception as e:
+            debug_log.error(f"Failed to load theme '{theme_name}': {e}", exception=e)
 
     def action_toggle_theme(self) -> None:
         nxt = "light" if (self._current_theme or "dark") == "dark" else "dark"
@@ -430,7 +589,10 @@ class TodoTextualApp(App):
                 pass
             return
         try:
-            self.load_css(path=self._THEMES[name], merge=False)
+            # Clear existing stylesheet and add new theme source
+            self.stylesheet.clear()
+            self.stylesheet.add_source(self._THEMES[name])
+            self.stylesheet.parse()  # Parse the added source
             self._current_theme = name
             self._save_theme_preference()
             try:
