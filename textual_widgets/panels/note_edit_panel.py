@@ -7,7 +7,7 @@ Implements dirty state tracking and markdown body editing.
 
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll, Horizontal, Vertical
-from textual.widgets import Static, Input, Label
+from textual.widgets import Static, Input, Label, Button
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual import work
@@ -58,10 +58,11 @@ class NoteEditPanel(VerticalScroll):
     }
 
     NoteEditPanel Static.label {
-        width: 10;
+        width: 6;
         content-align: right middle;
         padding: 0 1 0 0;
         color: cyan;
+        text-style: bold;
     }
 
     NoteEditPanel .field-row {
@@ -98,7 +99,7 @@ class NoteEditPanel(VerticalScroll):
         color: $text-muted;
         width: 100%;
         height: auto;
-        padding: 0 0 0 11;
+        padding: 0 0 0 7;
     }
 
     NoteEditPanel Static.hint-main {
@@ -118,6 +119,18 @@ class NoteEditPanel(VerticalScroll):
     NoteEditPanel Static.section-label {
         color: cyan;
         padding: 0;
+    }
+
+    NoteEditPanel Horizontal.buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        padding: 1 0;
+    }
+
+    NoteEditPanel Button {
+        margin: 0 1;
+        min-width: 14;
     }
     """
 
@@ -200,10 +213,34 @@ class NoteEditPanel(VerticalScroll):
                     pass
             yield body_widget
 
+        # Hints
+        yield Static("[dim]Ctrl+S to Save | Esc to Cancel[/dim]", classes="hint-main")
+
+        # Action buttons
+        with Horizontal(classes="buttons"):
+            yield Button("💾 Save (Ctrl+S)", variant="primary", id="save_btn")
+            yield Button("❌ Cancel (Esc)", variant="default", id="cancel_btn")
+
     def on_mount(self) -> None:
         """Focus title input and capture original values"""
         self.query_one("#title_input", Input).focus()
         self._capture_original_values()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses"""
+        from debug_logger import debug_log
+
+        debug_log.info(f"[NOTE_EDIT] ✅ Button pressed: {event.button.id}")
+
+        if event.button.id == "save_btn":
+            debug_log.info("[NOTE_EDIT] → Calling action_save()")
+            self.action_save()
+            event.stop()
+        elif event.button.id == "cancel_btn":
+            debug_log.info("[NOTE_EDIT] → Calling action_cancel()")
+            # action_cancel is @work decorated, so calling it directly creates the worker
+            self.action_cancel()
+            event.stop()
 
     def _capture_original_values(self) -> None:
         """Store original values for dirty tracking"""
@@ -273,9 +310,12 @@ class NoteEditPanel(VerticalScroll):
 
     def action_save(self) -> None:
         """Validate and save note (Ctrl+S)"""
+        from debug_logger import debug_log
         from services.notes import FileNoteRepository
         from config import DEFAULT_NOTES_DIR
         from datetime import datetime
+
+        debug_log.info("[NOTE_EDIT] 💾 action_save() called")
 
         # Get field values
         title = self.query_one("#title_input", Input).value.strip()
@@ -311,11 +351,12 @@ class NoteEditPanel(VerticalScroll):
                 title=title,
                 body_md=body,
                 tags=tags,
-                task_links=[],
+                task_ids=[],
                 created_at=datetime.now().isoformat()
             )
             saved_note = repo.save(note)
             self.app.notify(f"Note created: {title}", severity="success")
+            debug_log.info(f"[NOTE_EDIT] ✅ Note created: {title}")
 
             # Update app state
             self.app.state.selected_note_id = saved_note.id
@@ -327,6 +368,7 @@ class NoteEditPanel(VerticalScroll):
             self._note_data.body_md = body
             repo.save(self._note_data)
             self.app.notify(f"Note updated: {title}", severity="success")
+            debug_log.info(f"[NOTE_EDIT] ✅ Note updated: {title}")
 
         # Return to list view
         from core.state import LeftPanelMode
@@ -359,3 +401,7 @@ class NoteEditPanel(VerticalScroll):
         else:
             # Editing existing - return to detail view
             self.app.state.left_panel_mode = LeftPanelMode.DETAIL_NOTE
+
+        # Refresh note table to show current state
+        if hasattr(self.app, 'refresh_note_table'):
+            self.app.refresh_note_table()

@@ -204,6 +204,134 @@ background: #000000 70%;         /* ✅ Hex color + opacity */
 background: cyan 50%;            /* ✅ Named color + opacity */
 ```
 
+### Issue: WorkerError - Double-Wrapping @work Decorated Methods
+
+**Symptom:**
+```
+WorkerError: Unsupported attempt to run an async worker
+  File "textual_widgets/panels/task_edit_panel.py", line 247
+    self.run_worker(self.action_cancel(), exclusive=True)
+```
+
+**Cause:**
+Attempting to wrap an already `@work` decorated method with `run_worker()` creates nested workers, which Textual doesn't support.
+
+**Invalid Code:**
+```python
+# ❌ WRONG - Double wrapping
+@work(exclusive=True)
+async def action_cancel(self) -> None:
+    # ... cancel logic ...
+
+def on_button_pressed(self, event: Button.Pressed) -> None:
+    if event.button.id == "cancel_btn":
+        self.run_worker(self.action_cancel(), exclusive=True)  # ❌ CRASH!
+```
+
+**Valid Code:**
+```python
+# ✅ CORRECT - Let @work handle worker creation
+@work(exclusive=True)
+async def action_cancel(self) -> None:
+    # ... cancel logic ...
+
+def on_button_pressed(self, event: Button.Pressed) -> None:
+    if event.button.id == "cancel_btn":
+        self.action_cancel()  # ✅ Method already decorated with @work
+        event.stop()
+```
+
+**Key Rule:** If a method is decorated with `@work`, call it directly. Don't wrap it with `run_worker()`.
+
+**Affected Files:** TaskEditPanel, NoteEditPanel (cancel button handlers)
+
+### Issue: Button Event Bubbling - Actions Trigger Multiple Times
+
+**Symptom:**
+- Single button click triggers action 7+ times
+- Log shows same action called repeatedly with ~200ms delays
+- Example from debug logs:
+```
+18:42:43.330 - action_back_to_list() called  ← Original
+18:42:43.827 - action_back_to_list() called  ← 0.5s later
+18:42:44.054 - action_back_to_list() called  ← 0.2s later
+...
+```
+
+**Cause:**
+Missing `event.stop()` allows events to bubble up through parent containers, causing repeated action execution.
+
+**Invalid Code:**
+```python
+# ❌ WRONG - Missing event.stop()
+def on_button_pressed(self, event: Button.Pressed) -> None:
+    if event.button.id == "save_btn":
+        self.action_save()
+        # Event bubbles up to parent containers!
+```
+
+**Valid Code:**
+```python
+# ✅ CORRECT - Prevent bubbling with event.stop()
+def on_button_pressed(self, event: Button.Pressed) -> None:
+    if event.button.id == "save_btn":
+        self.action_save()
+        event.stop()  # ✅ Prevents event bubbling
+    elif event.button.id == "cancel_btn":
+        self.action_cancel()
+        event.stop()  # ✅ Prevents event bubbling
+```
+
+**Key Rule:** ALWAYS call `event.stop()` after handling button presses to prevent event bubbling.
+
+**Affected Widgets:** TaskDetailPanel, NoteDetailPanel, TaskEditPanel, NoteEditPanel (all 12 buttons)
+
+### Issue: Dual Mode System Desynchronization
+
+**Symptom:**
+- Switching to notes mode (via `m` key or `mode notes` command)
+- Status bar shows "5 notes" but panel displays empty task list
+- Panel title shows "Tasks" instead of "Notes"
+- Notes never load despite correct entity mode
+
+**Cause:**
+Two separate mode properties exist and must be synchronized:
+- `state.entity_mode` (str: "tasks" | "notes") - Data layer
+- `state.left_panel_mode` (LeftPanelMode enum) - UI layer
+
+Updating only `entity_mode` leaves `left_panel_mode` at LIST_TASKS, so TaskTable stays visible.
+
+**Invalid Code:**
+```python
+# ❌ WRONG - Only updates entity_mode
+def action_toggle_mode(self) -> None:
+    self.state.entity_mode = "notes"  # left_panel_mode NOT updated!
+    self.refresh_table()
+    # Result: Status bar shows "notes" but task list still displays
+```
+
+**Valid Code:**
+```python
+# ✅ CORRECT - Update both mode properties
+def action_toggle_mode(self) -> None:
+    from core.state import LeftPanelMode
+
+    # Toggle entity mode
+    self.state.entity_mode = "notes" if self.state.entity_mode == "tasks" else "tasks"
+
+    # Update panel mode to match
+    if self.state.entity_mode == "tasks":
+        self.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+    elif self.state.entity_mode == "notes":
+        self.state.left_panel_mode = LeftPanelMode.LIST_NOTES
+
+    self.refresh_table()
+```
+
+**Key Rule:** When changing `entity_mode`, ALWAYS update `left_panel_mode` to match.
+
+**Affected Files:** `textual_app.py` (action_toggle_mode, mode command interceptor)
+
 ## Textual Version Compatibility
 
 ### Tested Versions

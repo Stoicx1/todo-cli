@@ -91,16 +91,47 @@ async def action_add_task(self) -> None:
 **Without `@work`:** `NoActiveWorker` exception
 **With `exclusive=True`:** Prevents multiple modals simultaneously
 
-### 5. Event Bubbling Prevention
+**CRITICAL: Don't Double-Wrap @work Decorated Methods**
 
 ```python
+# ❌ WRONG - Causes WorkerError
+@work(exclusive=True)
+async def action_cancel(self) -> None:
+    # ...
+
+def on_button_pressed(self, event):
+    self.run_worker(self.action_cancel(), exclusive=True)  # CRASH!
+
+# ✅ CORRECT - @work handles worker creation
+def on_button_pressed(self, event):
+    self.action_cancel()  # Method already decorated with @work
+```
+
+**Why:** `@work` decorated methods create workers automatically. Wrapping them with `run_worker()` creates nested workers, causing `WorkerError: Unsupported attempt to run an async worker`.
+
+### 5. Event Bubbling Prevention (CRITICAL)
+
+**All button handlers MUST call `event.stop()` to prevent multiple triggers:**
+
+```python
+def on_button_pressed(self, event: Button.Pressed) -> None:
+    """Handle button presses"""
+    if event.button.id == "save_btn":
+        self.action_save()
+        event.stop()  # REQUIRED - prevents bubbling
+    elif event.button.id == "cancel_btn":
+        self.action_cancel()
+        event.stop()  # REQUIRED - prevents bubbling
+
 def on_input_submitted(self, event: Input.Submitted) -> None:
     # ... handle input ...
-
-    # REQUIRED to prevent duplicate execution
     event.stop()
     event.prevent_default()
 ```
+
+**Without `event.stop()`:** Events bubble up through parent containers, causing actions to trigger 7+ times per click.
+
+**Affected Widgets:** TaskDetailPanel, NoteDetailPanel, TaskEditPanel, NoteEditPanel (all 12 buttons)
 
 ## Theme Configuration
 
@@ -151,7 +182,7 @@ core/
 
 models/
 ├── task.py           # Task dataclass (id, name, priority, tags, done, created_at, updated_at)
-├── note.py           # Note dataclass (id, title, body, tags, task_links, created_at)
+├── note.py           # Note dataclass (id, title, body, tags, task_ids, created_at)
 └── ai_message.py     # AIMessage for conversation history
 
 utils/
@@ -199,6 +230,54 @@ state._tag_index           # O(1) lookup by tag
 ```
 
 **Flow:** User input → `handle_command()` → mutate state → UI refresh
+
+### Dual Mode System (CRITICAL)
+
+**The Textual UI uses two separate mode properties that MUST stay synchronized:**
+
+```python
+# In core/state.py
+state.entity_mode       # str: "tasks" | "notes" - Data layer mode
+
+# In textual_app.py
+self.state.left_panel_mode  # LeftPanelMode enum - UI layer panel state
+# Values: LIST_TASKS, DETAIL_TASK, EDIT_TASK, LIST_NOTES, DETAIL_NOTE, EDIT_NOTE
+```
+
+**Why Two Properties?**
+- `entity_mode`: Determines which data to display (tasks vs notes)
+- `left_panel_mode`: Controls which panel widget is mounted (list/detail/edit)
+
+**CRITICAL: Always update BOTH when switching modes:**
+
+```python
+# ✅ CORRECT - Both properties updated
+def action_toggle_mode(self) -> None:
+    from core.state import LeftPanelMode
+
+    # Toggle entity mode
+    self.state.entity_mode = "notes" if self.state.entity_mode == "tasks" else "tasks"
+
+    # Update panel mode to match
+    if self.state.entity_mode == "tasks":
+        self.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+    elif self.state.entity_mode == "notes":
+        self.state.left_panel_mode = LeftPanelMode.LIST_NOTES
+
+    self.refresh_table()
+
+# ❌ WRONG - Only updates entity_mode
+def action_toggle_mode(self) -> None:
+    self.state.entity_mode = "notes"  # left_panel_mode NOT updated!
+    # Result: Status bar shows "notes" but task list still displays
+```
+
+**Common Desync Bug:** Updating only `entity_mode` causes:
+- Status bar shows correct mode ("5 notes")
+- Panel displays wrong content (empty task list)
+- Panel title doesn't change ("Tasks" instead of "Notes")
+
+**Files Affected:** `textual_app.py` (action_toggle_mode, mode command interceptor)
 
 ### Command System
 
@@ -428,7 +507,58 @@ debug_log.error("Failed to save", exception=e)
 
 **User benefit:** Attach log file when reporting bugs
 
+### Emoji-Prefixed Logging Pattern
+
+**All panel methods use consistent format: `[PANEL_NAME] emoji message`**
+
+```python
+# Panel lifecycle
+debug_log.info(f"[NOTE_DETAIL] 🟢 Panel mounted for note {self._note_data.id[:8]}")
+
+# Button events
+debug_log.info(f"[TASK_EDIT] ✅ Button pressed: {event.button.id}")
+debug_log.info("[TASK_EDIT] → Calling action_save()")
+
+# Action methods
+debug_log.info("[NOTE_EDIT] 💾 action_save() called")
+debug_log.info(f"[NOTE_EDIT] ✅ Note created: {title}")
+
+# Delete operations
+debug_log.info(f"[TASK_DETAIL] 🗑️ action_delete_task() called for task #{task_id}")
+debug_log.info(f"[NOTE_DETAIL] User confirmed: {confirmed}")
+
+# Navigation
+debug_log.info("[NOTE_DETAIL] 🔙 action_back_to_list() called")
+debug_log.info("[TASK_DETAIL] ✏️ action_edit_task() called")
+
+# Errors
+debug_log.info("[NOTE_DETAIL] ❌ Delete cancelled by user")
+```
+
+**Emoji Convention:**
+- 🟢 - Lifecycle events (mount, unmount)
+- ✅ - Success, confirmation
+- → - Action dispatch
+- 💾 - Save operations
+- 🗑️ - Delete operations
+- 🔙 - Navigation (back)
+- ✏️ - Edit operations
+- ❌ - Errors, cancellations
+
+**Coverage Status:**
+- TaskDetailPanel: 100% (5 methods)
+- NoteDetailPanel: 100% (5 methods)
+- TaskEditPanel: 90% (button handler + action_save)
+- NoteEditPanel: 90% (button handler + action_save)
+
 ## Recent Major Changes (Oct 2025)
+
+### Unreleased - Critical Bug Fixes (Oct 2025)
+- **Edit Panel Cancel Button**: Fixed WorkerError crash from incorrect `run_worker()` usage
+- **Notes Mode Display**: Fixed dual mode system desynchronization (`entity_mode` vs `left_panel_mode`)
+- **Button Event Bubbling**: Fixed buttons triggering 7x per click (added `event.stop()`)
+- **Debug Logging**: Added comprehensive logging to NoteDetailPanel (0% → 100% coverage)
+- All panels now have 90-100% logging coverage with emoji-prefixed format
 
 ### v0.2.0 - Theme System Refactoring
 - Removed complex runtime theme switching (Ctrl+T removed)
@@ -470,6 +600,8 @@ See: `docs/history/BUGFIX_COMPREHENSIVE_TEXTUAL_2025.md`
 1. **Don't use `CSS_PATH`** - Use inline `CSS` string only
 2. **Don't use `self._task` in widgets** - Use `self._task_data`
 3. **Don't forget `@work` on modals** - Required for `push_screen_wait()`
-4. **Don't skip `call_from_thread()`** - Required for worker UI updates
-5. **Don't forget event.stop()** - Required to prevent bubbling
-6. **Don't hardcode mode assumptions** - Check `state.current_mode` for mode-aware commands
+4. **Don't wrap `@work` methods with `run_worker()`** - Causes WorkerError (double-wrapping)
+5. **Don't skip `call_from_thread()`** - Required for worker UI updates
+6. **Don't forget `event.stop()` in button handlers** - Causes 7+ triggers per click
+7. **Don't update `entity_mode` without `left_panel_mode`** - Causes mode desync (notes not displaying)
+8. **Don't hardcode mode assumptions** - Check `state.current_mode` for mode-aware commands

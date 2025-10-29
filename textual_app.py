@@ -858,6 +858,38 @@ class TodoTextualApp(App):
                     pass
                 return
 
+        # Intercept mode command to update panel mode
+        if cmd == "mode":
+            if len(parts) >= 2 and parts[1] in ("tasks", "notes"):
+                from core.state import LeftPanelMode
+
+                old_mode = self.state.entity_mode
+                new_mode = parts[1]
+
+                # Update entity mode
+                self.state.entity_mode = new_mode
+
+                # Update panel mode to match
+                if new_mode == "tasks":
+                    self.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+                    self.left_panel_mode = LeftPanelMode.LIST_TASKS
+                    debug_log.info(f"[APP] Mode command: {old_mode} → TASKS (panel: LIST_TASKS)")
+                elif new_mode == "notes":
+                    self.state.left_panel_mode = LeftPanelMode.LIST_NOTES
+                    self.left_panel_mode = LeftPanelMode.LIST_NOTES
+                    debug_log.info(f"[APP] Mode command: {old_mode} → NOTES (panel: LIST_NOTES)")
+
+                # Refresh tables
+                self.refresh_table()
+                if new_mode == "notes" and hasattr(self, 'refresh_note_table'):
+                    self.refresh_note_table()
+
+                self.notify(f"Mode: {old_mode} → {new_mode}")
+                return
+            else:
+                self.notify("Usage: mode tasks|notes", severity="error")
+                return
+
         # Use existing command handler from core/commands.py
         try:
             handle_command(command, self.state, self.console)
@@ -1251,21 +1283,28 @@ class TodoTextualApp(App):
 
     def action_toggle_mode(self) -> None:
         """Toggle between tasks and notes mode"""
+        from core.state import LeftPanelMode
+
+        # Toggle entity mode
         self.state.entity_mode = "notes" if self.state.entity_mode == "tasks" else "tasks"
-        self.refresh_table()
-        # Focus appropriate table
+
+        # Update panel mode to match entity mode
         if self.state.entity_mode == "tasks":
-            try:
-                task_table = self.query_one(TaskTable)
-                task_table.focus()
-            except Exception:
-                pass
+            self.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+            self.left_panel_mode = LeftPanelMode.LIST_TASKS
+            debug_log.info("[APP] Mode toggled to TASKS - panel mode updated to LIST_TASKS")
         elif self.state.entity_mode == "notes":
-            try:
-                note_table = self.query_one(NoteTable)
-                note_table.focus()
-            except Exception:
-                pass
+            self.state.left_panel_mode = LeftPanelMode.LIST_NOTES
+            self.left_panel_mode = LeftPanelMode.LIST_NOTES
+            debug_log.info("[APP] Mode toggled to NOTES - panel mode updated to LIST_NOTES")
+
+        # Refresh table data
+        self.refresh_table()
+
+        # Refresh note table if switching to notes
+        if self.state.entity_mode == "notes" and hasattr(self, 'refresh_note_table'):
+            self.refresh_note_table()
+
         self.notify(f"Mode: {self.state.entity_mode}")
 
     def _ensure_note_selection(self) -> str | None:

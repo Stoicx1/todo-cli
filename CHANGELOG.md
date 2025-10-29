@@ -7,6 +7,30 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 ## [Unreleased]
 
 ### Fixed
+- **Edit Panel Cancel Button** - Fixed critical WorkerError crash when canceling edits
+  - Removed incorrect `run_worker()` wrapper from cancel button handlers
+  - `@work` decorated methods create workers automatically - double-wrapping not supported
+  - Fixed in both TaskEditPanel and NoteEditPanel
+  - Cancel now works reliably without crashes
+
+- **Notes Mode Display** - Fixed notes not appearing when switching from tasks mode
+  - Root cause: Dual mode system desynchronization (`entity_mode` vs `left_panel_mode`)
+  - Fixed `action_toggle_mode()` to update both mode properties
+  - Added "mode" command interceptor to synchronize modes before `handle_command()`
+  - Notes now display correctly when using `m` key or `mode notes` command
+
+- **Button Event Bubbling** - Fixed buttons triggering 7x per click in detail panels
+  - Added missing `event.stop()` after all button action calls
+  - Prevents events from bubbling up through parent containers
+  - Fixed in TaskDetailPanel (3 buttons) and NoteDetailPanel (3 buttons)
+  - Buttons now fire exactly once per click
+
+- **Debug Logging Coverage** - Added comprehensive logging to NoteDetailPanel
+  - Coverage improved from 0% to 100% (5 methods, ~40 lines added)
+  - Added logging to TaskEditPanel and NoteEditPanel button handlers
+  - All panels now have 90-100% logging coverage with emoji-prefixed format
+  - Example: `[NOTE_DETAIL] 🗑️ action_delete_note() called for note abc12345`
+
 - **StatusBar Visibility** - Fixed critical rendering issue caused by incorrect height calculation
   - Resolved box-sizing: border-box height formula (7 debugging iterations)
   - Added comprehensive debug logging for StatusBar updates (37 log statements)
@@ -68,7 +92,7 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
   - Persistent storage in `notes/` directory (one JSON file per note)
 
 - **New Models & Services**:
-  - `models/note.py` - Note dataclass with id, title, body, tags, task_links
+  - `models/note.py` - Note dataclass with id, title, body, tags, task_ids
   - `services/notes_repo.py` - NotesRepository for CRUD operations and search
 
 - **New UI Widgets** (Textual):

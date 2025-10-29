@@ -104,36 +104,31 @@ class NoteDetailPanel(VerticalScroll):
         super().__init__(**kwargs)
         self._note_data = note_data
 
-        # Set border title
+        # Set border title with note ID
         title = note_data.title or "Untitled Note"
-        self.border_title = title
+        title_short = title[:40] + "..." if len(title) > 40 else title
+        self.border_title = f"Note: {title_short}"
 
     def compose(self) -> ComposeResult:
         """Compose the note detail view"""
         divider = ("─" * 60) if USE_UNICODE else ("-" * 60)
         tag_icon = "#"
 
-        # ID
-        yield Static(f"[dim]ID: {self._note_data.id[:16]}...[/dim]", classes="field-value")
-
         # Tags
         if self._note_data.tags:
             tags_display = ", ".join([f"[cyan]{t}[/cyan]" for t in self._note_data.tags])
-            yield Static("[bold cyan]Tags:[/bold cyan]", classes="field-label")
-            yield Static(f"  {tag_icon} {tags_display}", classes="field-value")
+            yield Static(f"[bold cyan]Tags:[/bold cyan] {tag_icon} {tags_display}", classes="field-value")
 
         # Task links
-        if self._note_data.task_links:
-            task_links_display = ", ".join([f"[yellow]#{tid}[/yellow]" for tid in self._note_data.task_links])
-            yield Static("[bold cyan]Linked Tasks:[/bold cyan]", classes="field-label")
-            yield Static(f"  {task_links_display}", classes="field-value")
+        if self._note_data.task_ids:
+            task_links_display = ", ".join([f"[yellow]#{tid}[/yellow]" for tid in self._note_data.task_ids])
+            yield Static(f"[bold cyan]Linked Tasks:[/bold cyan] {task_links_display}", classes="field-value")
 
         # Divider
         yield Static(f"[dim]{divider}[/dim]", classes="divider")
 
         # Body (markdown rendered)
         if self._note_data.body_md:
-            yield Static("[bold cyan]Content:[/bold cyan]", classes="field-label")
             yield Markdown(self._note_data.body_md)
         else:
             yield Static("[dim italic]No content[/dim italic]", classes="field-value")
@@ -152,46 +147,80 @@ class NoteDetailPanel(VerticalScroll):
         # Hint + Buttons
         yield Static("[dim]E to Edit | Esc to go Back | D to Delete[/dim]", classes="hint")
         with Horizontal(classes="buttons"):
-            yield Button("Edit (E)", variant="primary", id="edit_btn")
-            yield Button("Back (Esc)", variant="default", id="back_btn")
-            yield Button("Delete (D)", variant="error", id="delete_btn")
+            yield Button("✏️ Edit (E)", variant="primary", id="edit_btn")
+            yield Button("🔙 Back (Esc)", variant="default", id="back_btn")
+            yield Button("🗑️ Delete (D)", variant="error", id="delete_btn")
 
     def on_mount(self) -> None:
         """Focus the panel on mount"""
+        from debug_logger import debug_log
+        from textual.widgets import Button
+
+        debug_log.info(f"[NOTE_DETAIL] 🟢 Panel mounted for note {self._note_data.id[:8]}")
+        debug_log.info(f"[NOTE_DETAIL] Focus state: {self.has_focus}")
+        debug_log.info(f"[NOTE_DETAIL] Buttons rendered: {len(self.query(Button))}")
         self.focus()
+        debug_log.info(f"[NOTE_DETAIL] After focus() call: {self.has_focus}")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses"""
+        from debug_logger import debug_log
+
+        debug_log.info(f"[NOTE_DETAIL] ✅ Button pressed: {event.button.id}")
+        debug_log.info(f"[NOTE_DETAIL] Panel has focus: {self.has_focus}")
+        debug_log.info(f"[NOTE_DETAIL] App focused widget: {self.app.focused}")
+
         if event.button.id == "edit_btn":
+            debug_log.info("[NOTE_DETAIL] → Calling action_edit_note()")
             self.action_edit_note()
+            event.stop()  # Prevent event bubbling
         elif event.button.id == "back_btn":
+            debug_log.info("[NOTE_DETAIL] → Calling action_back_to_list()")
             self.action_back_to_list()
+            event.stop()  # Prevent event bubbling
         elif event.button.id == "delete_btn":
+            debug_log.info("[NOTE_DETAIL] → Calling action_delete_note()")
             self.action_delete_note()
+            event.stop()  # Prevent event bubbling
 
     def action_back_to_list(self) -> None:
         """Return to note list (Esc)"""
+        from debug_logger import debug_log
         from core.state import LeftPanelMode
+
+        debug_log.info("[NOTE_DETAIL] 🔙 action_back_to_list() called")
         self.app.state.left_panel_mode = LeftPanelMode.LIST_NOTES
+        debug_log.info("[NOTE_DETAIL] ✅ Switched to LIST_NOTES mode")
 
     def action_edit_note(self) -> None:
         """Switch to edit mode (e or i)"""
+        from debug_logger import debug_log
         from core.state import LeftPanelMode
+
+        debug_log.info("[NOTE_DETAIL] ✏️ action_edit_note() called")
         self.app.state.edit_mode_is_new = False
         self.app.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
+        debug_log.info("[NOTE_DETAIL] ✅ Switched to EDIT_NOTE mode")
 
     @work(exclusive=True)
     async def action_delete_note(self) -> None:
         """Delete note with confirmation (d)"""
+        from debug_logger import debug_log
         from textual_widgets.confirm_dialog import ConfirmDialog
         from services.notes import FileNoteRepository
         from config import DEFAULT_NOTES_DIR
 
+        debug_log.info(f"[NOTE_DETAIL] 🗑️ action_delete_note() called for note {self._note_data.id[:8]}")
+
         # Show confirmation dialog
         title = self._note_data.title or "Untitled"
+        debug_log.info(f"[NOTE_DETAIL] Showing confirmation dialog for: {title}")
+
         confirmed = await self.app.push_screen_wait(
             ConfirmDialog(f"Delete note: {title}?")
         )
+
+        debug_log.info(f"[NOTE_DETAIL] User confirmed: {confirmed}")
 
         if confirmed:
             # Remove from repository
@@ -199,6 +228,7 @@ class NoteDetailPanel(VerticalScroll):
             repo.delete(self._note_data.id)
 
             self.app.notify(f"Note deleted: {title}", severity="information")
+            debug_log.info(f"[NOTE_DETAIL] ✅ Note deleted: {title}")
 
             # Return to list
             from core.state import LeftPanelMode
@@ -207,3 +237,6 @@ class NoteDetailPanel(VerticalScroll):
             # Refresh note table
             if hasattr(self.app, 'refresh_note_table'):
                 self.app.refresh_note_table()
+            debug_log.info("[NOTE_DETAIL] ✅ Returned to note list")
+        else:
+            debug_log.info("[NOTE_DETAIL] ❌ Delete cancelled by user")

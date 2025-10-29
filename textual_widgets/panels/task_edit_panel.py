@@ -7,7 +7,7 @@ Implements dirty state tracking and validation.
 
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll, Horizontal
-from textual.widgets import Static, Input, Select, Label
+from textual.widgets import Static, Input, Select, Label, Button
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual.validation import Length
@@ -57,10 +57,11 @@ class TaskEditPanel(VerticalScroll):
     }
 
     TaskEditPanel Static.label {
-        width: 12;
+        width: 6;
         content-align: right middle;
         padding: 0 1 0 0;
         color: cyan;
+        text-style: bold;
     }
 
     TaskEditPanel .field-row {
@@ -93,7 +94,7 @@ class TaskEditPanel(VerticalScroll):
         color: $text-muted;
         width: 100%;
         height: auto;
-        padding: 0 0 0 13;
+        padding: 0 0 0 7;
     }
 
     TaskEditPanel Static.hint-main {
@@ -108,6 +109,18 @@ class TaskEditPanel(VerticalScroll):
         width: 100%;
         text-align: center;
         padding: 0;
+    }
+
+    TaskEditPanel Horizontal.buttons {
+        width: 100%;
+        height: auto;
+        align: center middle;
+        padding: 1 0;
+    }
+
+    TaskEditPanel Button {
+        margin: 0 1;
+        min-width: 14;
     }
     """
 
@@ -169,27 +182,9 @@ class TaskEditPanel(VerticalScroll):
                 ]
             )
 
-        # Comment field (optional)
-        with Horizontal(classes="field-row"):
-            yield Static("Comment:", classes="label")
-            yield Input(
-                placeholder="Short comment (optional)",
-                value=self._task_data.comment if self._task_data else "",
-                id="comment_input",
-            )
-
-        # Description field (optional)
-        with Horizontal(classes="field-row"):
-            yield Static("Description:", classes="label")
-            yield Input(
-                placeholder="Detailed description (optional)",
-                value=self._task_data.description if self._task_data else "",
-                id="description_input",
-            )
-
         # Priority (select dropdown)
         with Horizontal(classes="field-row"):
-            yield Static("Priority:", classes="label")
+            yield Static("Prior:", classes="label")
             priority_value = str(self._task_data.priority) if self._task_data else "2"
             yield Select(
                 options=[
@@ -211,10 +206,52 @@ class TaskEditPanel(VerticalScroll):
                 id="tags_input",
             )
 
+        # Comment field (optional)
+        with Horizontal(classes="field-row"):
+            yield Static("Note:", classes="label")
+            yield Input(
+                placeholder="Short comment (optional)",
+                value=self._task_data.comment if self._task_data else "",
+                id="comment_input",
+            )
+
+        # Description field (optional)
+        with Horizontal(classes="field-row"):
+            yield Static("Desc:", classes="label")
+            yield Input(
+                placeholder="Detailed description (optional)",
+                value=self._task_data.description if self._task_data else "",
+                id="description_input",
+            )
+
+        # Hints
+        yield Static("[dim]Ctrl+S to Save | Esc to Cancel[/dim]", classes="hint-main")
+
+        # Action buttons
+        with Horizontal(classes="buttons"):
+            yield Button("💾 Save (Ctrl+S)", variant="primary", id="save_btn")
+            yield Button("❌ Cancel (Esc)", variant="default", id="cancel_btn")
+
     def on_mount(self) -> None:
         """Focus name input and capture original values"""
         self.query_one("#name_input", Input).focus()
         self._capture_original_values()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handle button presses"""
+        from debug_logger import debug_log
+
+        debug_log.info(f"[TASK_EDIT] ✅ Button pressed: {event.button.id}")
+
+        if event.button.id == "save_btn":
+            debug_log.info("[TASK_EDIT] → Calling action_save()")
+            self.action_save()
+            event.stop()
+        elif event.button.id == "cancel_btn":
+            debug_log.info("[TASK_EDIT] → Calling action_cancel()")
+            # action_cancel is @work decorated, so calling it directly creates the worker
+            self.action_cancel()
+            event.stop()
 
     def _capture_original_values(self) -> None:
         """Store original values for dirty tracking"""
@@ -270,6 +307,10 @@ class TaskEditPanel(VerticalScroll):
 
     def action_save(self) -> None:
         """Validate and save task (Ctrl+S)"""
+        from debug_logger import debug_log
+
+        debug_log.info("[TASK_EDIT] 💾 action_save() called")
+
         # Get field values
         name = self.query_one("#name_input", Input).value.strip()
         comment = self.query_one("#comment_input", Input).value.strip()
@@ -316,6 +357,7 @@ class TaskEditPanel(VerticalScroll):
         if self._is_new:
             self.app.state.add_task(**data)
             self.app.notify(f"Task created: {name}", severity="success")
+            debug_log.info(f"[TASK_EDIT] ✅ Task created: {name}")
         else:
             # Update existing task
             task = self._task_data
@@ -334,6 +376,7 @@ class TaskEditPanel(VerticalScroll):
             self.app.state.invalidate_filter_cache()
 
             self.app.notify(f"Task #{task.id} updated", severity="success")
+            debug_log.info(f"[TASK_EDIT] ✅ Task #{task.id} updated: {name}")
 
         # Return to list view
         from core.state import LeftPanelMode
@@ -366,3 +409,7 @@ class TaskEditPanel(VerticalScroll):
         else:
             # Editing existing - return to detail view
             self.app.state.left_panel_mode = LeftPanelMode.DETAIL_TASK
+
+        # Refresh table to show current state
+        if hasattr(self.app, 'refresh_table'):
+            self.app.refresh_table()
