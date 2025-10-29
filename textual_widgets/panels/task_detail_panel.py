@@ -9,6 +9,7 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll, Vertical, Horizontal
 from textual.widgets import Static, Button
 from textual.binding import Binding
+from textual import work
 
 from models.task import Task
 from config import USE_UNICODE
@@ -30,44 +31,36 @@ class TaskDetailPanel(VerticalScroll):
     TaskDetailPanel {
         width: 100%;
         height: 1fr;
-        border: solid cyan;
+        border: solid #404040;
         background: $surface;
-        padding: 1 2;
+        padding: 0 1;
     }
 
     TaskDetailPanel:focus {
-        border: solid yellow;
-    }
-
-    TaskDetailPanel Static.title {
-        width: 100%;
-        content-align: center middle;
-        text-style: bold;
-        color: cyan;
-        padding: 0 0 1 0;
+        border: solid #ffdb7a;
     }
 
     TaskDetailPanel Static.field-label {
         color: cyan;
         text-style: bold;
-        padding: 1 0 0 0;
+        padding: 0;
     }
 
     TaskDetailPanel Static.field-value {
-        padding: 0 0 1 2;
+        padding: 0 0 0 2;
     }
 
     TaskDetailPanel Static.divider {
         width: 100%;
         color: $text-muted;
-        padding: 1 0;
+        padding: 0;
     }
 
     TaskDetailPanel Static.hint {
         color: $text-muted;
         width: 100%;
         text-align: center;
-        padding: 1 0 0 0;
+        padding: 0;
         text-style: italic;
     }
 
@@ -75,7 +68,7 @@ class TaskDetailPanel(VerticalScroll):
         width: 100%;
         height: auto;
         align: center middle;
-        padding: 1 0 0 0;
+        padding: 0;
     }
 
     TaskDetailPanel Button {
@@ -104,6 +97,9 @@ class TaskDetailPanel(VerticalScroll):
         super().__init__(**kwargs)
         self._task_data = task_data  # NOT _task - reserved by MessagePump!
 
+        # Set border title
+        self.border_title = f"Task #{task_data.id}"
+
     def compose(self) -> ComposeResult:
         """Compose the task detail view"""
         # Icons and formatting
@@ -125,18 +121,11 @@ class TaskDetailPanel(VerticalScroll):
         priority_color = priority_colors.get(self._task_data.priority, "white")
         priority_display = f"[{priority_color}]{priority_label}[/{priority_color}]"
 
-        # Title
-        yield Static(
-            f"[bold cyan]Task #{self._task_data.id}[/bold cyan]",
-            classes="title"
-        )
-
         # Task name + status
         yield Static(
             f"[bold white]{self._task_data.name}[/bold white]  {status_text}",
             classes="field-value"
         )
-        yield Static("", classes="field-value")  # Spacing
 
         # Priority
         yield Static("[bold cyan]Priority:[/bold cyan]", classes="field-label")
@@ -213,6 +202,7 @@ class TaskDetailPanel(VerticalScroll):
         self.app.state.edit_mode_is_new = False
         self.app.state.left_panel_mode = LeftPanelMode.EDIT_TASK
 
+    @work(exclusive=True)
     async def action_delete_task(self) -> None:
         """Delete task with confirmation (d)"""
         from textual_widgets.confirm_dialog import ConfirmDialog

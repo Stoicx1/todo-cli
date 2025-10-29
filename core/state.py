@@ -173,13 +173,24 @@ class AppState:
         conditions = parse_filter_expression(filter_value)
         if not conditions:
             return tasks
-        return [t for t in tasks if matches_all_conditions(t, conditions)]
+
+        result = [t for t in tasks if matches_all_conditions(t, conditions)]
+        return result
 
     @property
     def filtered_tasks(self) -> List[Task]:
         filter_changed = self._current_filter != self.filter
+        # CRITICAL: Also check if task count changed (tasks were loaded/added/removed)
+        task_count_changed = (
+            self._filtered_tasks_cache is None or
+            len(self.tasks) != len(self._filtered_tasks_cache)
+        )
+
         if filter_changed:
             self._current_filter = self.filter
+            self._filter_cache_dirty = True
+
+        if task_count_changed:
             self._filter_cache_dirty = True
 
         if not self._filter_cache_dirty and self._filtered_tasks_cache is not None:
@@ -217,11 +228,15 @@ class AppState:
     def get_current_page_tasks(self) -> List[Task]:
         # Page size from config based on view mode
         self.page_size = ui.COMPACT_PAGE_SIZE if self.view_mode == "compact" else ui.DETAIL_PAGE_SIZE
+
         show_tasks = self.filtered_tasks
         show_tasks = self.get_sorted_tasks(show_tasks)
+
         start = self.page * self.page_size
         end = start + self.page_size
-        return show_tasks[start:end]
+        result = show_tasks[start:end]
+
+        return result
 
     # ------------------------------------------------------------------
     # Persistence (tasks)
@@ -326,6 +341,7 @@ class AppState:
             self._rebuild_index()
             self._rebuild_tag_index()
             self._load_preferences()
+            self.invalidate_filter_cache()  # Invalidate cache after loading tasks
 
             check_mark = "✓" if USE_UNICODE else "+"
             console.print(f"[green]{check_mark}[/green] Tasks loaded from [bold]{filename}[/bold]")
@@ -348,6 +364,7 @@ class AppState:
             self.tasks = []
             self.next_id = 1
             self._load_preferences()
+            self.invalidate_filter_cache()  # Invalidate cache for empty task list
             # Initialize notes directory if missing
             try:
                 from services.notes import FileNoteRepository
@@ -420,7 +437,7 @@ class AppState:
     def _save_preferences(self) -> None:
         try:
             settings_path = Path(DEFAULT_SETTINGS_FILE)
-            # Merge with existing settings to preserve unrelated keys (e.g., theme)
+            # Merge with existing settings to preserve unrelated keys
             existing: dict = {}
             try:
                 if settings_path.exists():
@@ -434,6 +451,9 @@ class AppState:
                 "filter": getattr(self, "filter", "none"),
             }
             merged = {**existing, **data}
+
+            # Remove legacy "theme" key (now stored in separate theme config file)
+            merged.pop("theme", None)
             tmp = settings_path.with_suffix(settings_path.suffix + ".tmp")
             tmp.write_text(json.dumps(merged, indent=2), encoding="utf-8")
             try:

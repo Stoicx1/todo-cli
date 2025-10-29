@@ -190,7 +190,7 @@ class CommandInput(Input):
     def __init__(self, **kwargs) -> None:
         """Initialize command input with suggester"""
         super().__init__(
-            placeholder="COMMANDS: type 'add', 'edit', 'filter'... or 'help' for all | Ctrl+K to toggle",
+            placeholder="⚡ CMD: add/edit/filter... | Ctrl+K toggle | help for all",
             suggester=CommandSuggester(),
             **kwargs
         )

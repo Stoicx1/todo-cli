@@ -17,6 +17,7 @@ DEFAULT_HISTORY_FILE = Path.home() / ".todo_cli_history"
 DEFAULT_AUTH_FILE = Path.home() / ".todo_auth"
 DEFAULT_SETTINGS_FILE = Path.home() / ".todo_cli_settings.json"
 DEFAULT_AI_CONVERSATION_FILE = Path.home() / ".todo_cli_ai_history.json"
+DEFAULT_THEME_CONFIG_FILE = Path.home() / ".todo_cli_theme.json"
 DEFAULT_NOTES_DIR = "notes"
 
 
@@ -182,6 +183,10 @@ class AIConfig:
     # Tool Execution Settings
     TOOL_SEARCH_LIMIT: int = 10  # Max tasks returned by search_tasks tool
     TOOL_REQUIRE_CONFIRMATION: bool = False  # Set True for destructive operations
+
+    # Auto-Accept Settings (NEW - Oct 2025)
+    AUTO_ACCEPT_TOOLS: bool = False  # Auto-execute create/edit tools without confirmation
+                                     # Note: Delete operations ALWAYS require confirmation for safety
 
 
 # Global AI config instance

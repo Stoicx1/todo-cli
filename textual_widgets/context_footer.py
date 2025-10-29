@@ -14,7 +14,7 @@ class ContextFooter(Static):
     """Renders two lines of key hints based on current focus and mode."""
 
     DEFAULT_CSS = """
-    ContextFooter { background: $primary; color: $text; height: 2; min-height: 2; padding: 0 1; }
+    ContextFooter { background: $primary; color: $text; height: 2; min-height: 2; padding: 0 1; dock: bottom; }
     """
 
     def on_mount(self) -> None:
@@ -55,7 +55,7 @@ class ContextFooter(Static):
         bullet = " â€¢ " if unicode_ok else " | "
 
         # Line 1: global/navigation
-        line1 = bullet.join(["m:mode", "v:view", "n/p", "/:cmd", "q:quit"])
+        line1 = bullet.join(["m:mode", "v:view", "n/p", "Ctrl+/:toggle", "/:cmd", "?:ai", "q:quit"])
 
         # Line 2: context actions
         if focus_id in ("task_table",) or str(focus_id).endswith("TaskTable"):

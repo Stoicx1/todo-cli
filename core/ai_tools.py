@@ -286,7 +286,24 @@ def edit_task(task_id: int, field: str, value: str) -> str:
     debug_log.debug(f"[AI_TOOLS] edit_task() called - task_id={task_id}, field='{field}', value='{value[:30]}'")
 
     try:
+        from core.state import LeftPanelMode
         state = _get_state()
+
+        # 🔒 CONTEXT VALIDATION: Ensure we're editing the correct task
+        panel_mode = getattr(state, 'left_panel_mode', None)
+        selected_task_id = getattr(state, 'selected_task_id', None)
+        is_new = getattr(state, 'edit_mode_is_new', False)
+
+        # BLOCK: User is creating a NEW task, not editing existing
+        if is_new and panel_mode == LeftPanelMode.EDIT_TASK:
+            debug_log.warning(f"[AI_TOOLS] edit_task BLOCKED - User is creating NEW task, tried to edit #{task_id}")
+            return f"❌ Error: You are currently CREATING a NEW task, not editing existing tasks.\n\nUse the create_task tool instead of edit_task.\nThe user wants to create a new task, not modify Task #{task_id}."
+
+        # BLOCK: User is editing a different task than the one being requested
+        if panel_mode == LeftPanelMode.EDIT_TASK and selected_task_id is not None:
+            if selected_task_id != task_id:
+                debug_log.warning(f"[AI_TOOLS] edit_task BLOCKED - User editing #{selected_task_id}, tried to edit #{task_id}")
+                return f"❌ Error: You are currently editing Task #{selected_task_id}, NOT Task #{task_id}.\n\nYou can only edit the task that is currently in focus.\nIf the user wants to edit Task #{task_id}, they need to navigate to that task first.\nFor now, focus on Task #{selected_task_id}."
 
         # Find task
         task = _find_task_by_id(task_id)
@@ -736,7 +753,167 @@ def get_task_statistics() -> str:
 
 
 # ============================================================================
-# TOOL 9: SAVE ALL CHANGES
+# TOOL 9: GET CURRENT EDIT CONTEXT
+# ============================================================================
+
+@tool
+def get_current_edit_context() -> str:
+    """
+    Get full details of the currently edited or viewed task/note.
+
+    This tool is context-aware and returns information about:
+    - The task being edited (if in EDIT_TASK mode)
+    - The note being edited (if in EDIT_NOTE mode)
+    - The task being viewed (if in DETAIL_TASK mode)
+    - The note being viewed (if in DETAIL_NOTE mode)
+    - Nothing if in list view modes
+
+    Returns:
+        Formatted details of the current focus item, or message if no item is focused
+
+    Example:
+        get_current_edit_context()  # Returns details of currently edited task/note
+    """
+    debug_log.debug("[AI_TOOLS] get_current_edit_context() called")
+
+    try:
+        from core.state import LeftPanelMode
+        state = _get_state()
+
+        panel_mode = getattr(state, 'left_panel_mode', None)
+        selected_task_id = getattr(state, 'selected_task_id', None)
+        selected_note_id = getattr(state, 'selected_note_id', None)
+        is_new = getattr(state, 'edit_mode_is_new', False)
+
+        # Check for task editing/viewing (including NEW task creation)
+        if panel_mode == LeftPanelMode.EDIT_TASK:
+            if is_new:
+                # CREATING NEW TASK - Special case
+                result = """**CREATING NEW Task**
+
+**Status**: Creating new task (not saved yet)
+**Mode**: Creation mode
+**Current state**: Empty task form, waiting for user input
+
+**Your role**: Help the user define and create this new task.
+
+**⚠️ CRITICAL RULE**:
+- DO NOT use edit_task on ANY existing tasks!
+- Use create_task tool when the user is ready to save
+- If user says "edit it" or "update it", they mean the NEW task being created"""
+                debug_log.info(f"[AI_TOOLS] Returned context for NEW task creation")
+                return result
+            elif selected_task_id:
+                # EDITING EXISTING TASK
+                task = _find_task_by_id(selected_task_id)
+                if not task:
+                    return f"❌ Error: Task #{selected_task_id} not found"
+                mode_str = "EDITING"
+            else:
+                return "ℹ️  No task is currently selected for editing."
+        elif panel_mode == LeftPanelMode.DETAIL_TASK and selected_task_id:
+            # VIEWING TASK DETAIL
+            task = _find_task_by_id(selected_task_id)
+            if not task:
+                return f"❌ Error: Task #{selected_task_id} not found"
+            mode_str = "VIEWING"
+        else:
+            task = None
+            mode_str = None
+
+        # If we found a task, format and return its details
+        if task and mode_str:
+
+            # Format full task details
+            status = "✅ COMPLETED" if task.done else "❌ INCOMPLETE"
+            priority_label = {1: "🔴 HIGH", 2: "🟡 MEDIUM", 3: "🟢 LOW"}.get(task.priority, "UNKNOWN")
+
+            result = f"**{mode_str} Task #{task.id}**: {task.name}\n\n"
+            result += f"**Status**: {status}\n"
+            result += f"**Priority**: {priority_label}\n"
+
+            if task.tags:
+                result += f"**Tags**: {', '.join(task.tags)}\n"
+            else:
+                result += f"**Tags**: (none)\n"
+
+            if task.comment:
+                result += f"**Comment**: {task.comment}\n"
+
+            if task.description:
+                result += f"\n**Description**:\n{task.description}\n"
+            else:
+                result += f"\n**Description**: (none)\n"
+
+            # Add timestamps
+            try:
+                from utils.time import humanize_age
+                created = humanize_age(task.created_at) if task.created_at else "unknown"
+                result += f"\n**Created**: {created}"
+                if task.updated_at:
+                    updated = humanize_age(task.updated_at)
+                    result += f"\n**Last Updated**: {updated}"
+            except Exception:
+                pass
+
+            debug_log.info(f"[AI_TOOLS] Returned context for task #{task.id}")
+            return result
+
+        # Check for note editing/viewing
+        elif panel_mode in (LeftPanelMode.EDIT_NOTE, LeftPanelMode.DETAIL_NOTE) and selected_note_id:
+            repo = _notes_repo()
+            note = repo.get(selected_note_id)
+            if not note:
+                return f"❌ Error: Note {selected_note_id[:8]} not found"
+
+            mode_str = "EDITING" if panel_mode == LeftPanelMode.EDIT_NOTE else "VIEWING"
+            if is_new and panel_mode == LeftPanelMode.EDIT_NOTE:
+                mode_str = "CREATING NEW"
+
+            result = f"**{mode_str} Note {note.id[:8]}**: {note.title}\n\n"
+
+            if note.tags:
+                result += f"**Tags**: {', '.join(note.tags)}\n"
+            else:
+                result += f"**Tags**: (none)\n"
+
+            if note.task_ids:
+                result += f"**Linked to tasks**: {', '.join(f'#{tid}' for tid in note.task_ids)}\n"
+            else:
+                result += f"**Linked to tasks**: (none)\n"
+
+            if note.body_md:
+                result += f"\n**Body**:\n```markdown\n{note.body_md}\n```\n"
+            else:
+                result += f"\n**Body**: (empty)\n"
+
+            # Add timestamps
+            try:
+                from utils.time import humanize_age
+                created = humanize_age(note.created_at) if note.created_at else "unknown"
+                result += f"\n**Created**: {created}"
+                if note.updated_at:
+                    updated = humanize_age(note.updated_at)
+                    result += f"\n**Last Updated**: {updated}"
+            except Exception:
+                pass
+
+            debug_log.info(f"[AI_TOOLS] Returned context for note {note.id[:8]}")
+            return result
+
+        # No current focus
+        else:
+            mode_name = panel_mode.value if panel_mode else "unknown"
+            debug_log.debug(f"[AI_TOOLS] No current focus - panel_mode={mode_name}")
+            return "ℹ️  No task or note is currently being edited or viewed.\n\nYou are in list view mode. You can help with:\n- Creating new tasks or notes\n- Searching for tasks or notes\n- Getting workspace statistics\n- Answering questions about the workspace"
+
+    except Exception as e:
+        debug_log.error(f"[AI_TOOLS] get_current_edit_context() failed: {str(e)}", exception=e)
+        return f"❌ Error: Failed to get current context - {str(e)}"
+
+
+# ============================================================================
+# TOOL 10: SAVE ALL CHANGES
 # ============================================================================
 
 @tool
@@ -789,7 +966,7 @@ def get_all_tools():
     Get list of all available tools for agent initialization.
 
     Returns:
-        List of LangChain tool functions (21 tools)
+        List of LangChain tool functions (22 tools)
     """
     return [
         # Task management (9 tools)
@@ -801,7 +978,9 @@ def get_all_tools():
         search_tasks,
         get_task_details,
         get_task_statistics,
-        save_all_changes,  # NEW: Explicit save tool
+        get_current_edit_context,  # NEW: Context-aware tool
+        # General operations (1 tool)
+        save_all_changes,  # Explicit save tool
         # Notes tools (8 tools)
         create_note,
         edit_note,

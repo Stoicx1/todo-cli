@@ -275,6 +275,27 @@ OPENAI_MODEL=gpt-4o-mini
 
 **Note:** The local AI insights (`insights` and `suggest` commands) work without any API key!
 
+### Theme Configuration
+
+Customize the UI appearance with the theme configuration file at `~/.todo_cli_theme.json`:
+
+```json
+{
+  "theme": "dark",
+  "_comment": "Valid values: 'dark' or 'light'. Restart app to apply changes."
+}
+```
+
+**To Change Theme:**
+1. Edit `~/.todo_cli_theme.json`
+2. Change `"theme"` value to `"dark"` or `"light"`
+3. Restart the application
+
+**Features:**
+- Auto-created on first run with dark theme default
+- Invalid themes automatically fall back to dark
+- Simple, predictable configuration (no runtime switching)
+
 ## 📊 Local AI Features
 
 The local AI system provides intelligent insights without requiring any external API:

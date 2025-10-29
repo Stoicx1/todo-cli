@@ -102,6 +102,42 @@ def on_input_submitted(self, event: Input.Submitted) -> None:
     event.prevent_default()
 ```
 
+## Theme Configuration
+
+**Simple config-based approach** - no runtime switching complexity
+
+### Configuration File
+
+**Location:** `~/.todo_cli_theme.json`
+
+**Format:**
+```json
+{
+  "theme": "dark",
+  "_comment": "Valid values: 'dark' or 'light'. Restart app to apply changes."
+}
+```
+
+### Changing Themes
+
+1. Edit `~/.todo_cli_theme.json`
+2. Change `"theme"` value to `"dark"` or `"light"`
+3. Restart application
+
+**Default:** Dark theme if config missing/invalid
+
+**Auto-created:** Config file is automatically created on first run with dark theme default
+
+### Implementation Details
+
+**Module:** `core/theme_config.py` handles all theme configuration
+**Loading:** Theme loaded once at startup in `on_load()` lifecycle method (before widgets created)
+**No runtime switching:** Theme changes require app restart (simple, predictable, no refresh complexity)
+
+**Theme CSS:** Inline CSS strings in `textual_app.py`:
+- `_CSS_DARK_THEME` - Dark theme with cyan accents
+- `_CSS_LIGHT_THEME` - Light theme with cyan accents
+
 ## Architecture
 
 ### Core Components (Shared by Both UIs)
@@ -393,6 +429,14 @@ debug_log.error("Failed to save", exception=e)
 **User benefit:** Attach log file when reporting bugs
 
 ## Recent Major Changes (Oct 2025)
+
+### v0.2.0 - Theme System Refactoring
+- Removed complex runtime theme switching (Ctrl+T removed)
+- Implemented simple config-based approach (~/.todo_cli_theme.json)
+- Theme changes now require app restart (predictable, maintainable)
+- Deleted 380+ lines of theme switching code
+- New core/theme_config.py module for clean separation
+- Maintains both dark and light themes (dark default)
 
 ### v0.1.1 - Mode-Aware Commands & UX Fixes
 - Mode-aware `add` and `edit` commands (respect tasks/notes mode)

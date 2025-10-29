@@ -9,6 +9,7 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll, Horizontal
 from textual.widgets import Static, Button, Markdown
 from textual.binding import Binding
+from textual import work
 
 from models.note import Note
 from config import USE_UNICODE
@@ -30,51 +31,43 @@ class NoteDetailPanel(VerticalScroll):
     NoteDetailPanel {
         width: 100%;
         height: 1fr;
-        border: solid cyan;
+        border: solid #404040;
         background: $surface;
-        padding: 1 2;
+        padding: 0 1;
     }
 
     NoteDetailPanel:focus {
-        border: solid yellow;
-    }
-
-    NoteDetailPanel Static.title {
-        width: 100%;
-        content-align: center middle;
-        text-style: bold;
-        color: cyan;
-        padding: 0 0 1 0;
+        border: solid #ffdb7a;
     }
 
     NoteDetailPanel Static.field-label {
         color: cyan;
         text-style: bold;
-        padding: 1 0 0 0;
+        padding: 0;
     }
 
     NoteDetailPanel Static.field-value {
-        padding: 0 0 1 2;
+        padding: 0 0 0 2;
     }
 
     NoteDetailPanel Markdown {
-        padding: 1 2;
+        padding: 0 1;
         background: $panel;
         border: solid $text-muted;
-        margin: 1 0;
+        margin: 0;
     }
 
     NoteDetailPanel Static.divider {
         width: 100%;
         color: $text-muted;
-        padding: 1 0;
+        padding: 0;
     }
 
     NoteDetailPanel Static.hint {
         color: $text-muted;
         width: 100%;
         text-align: center;
-        padding: 1 0 0 0;
+        padding: 0;
         text-style: italic;
     }
 
@@ -82,7 +75,7 @@ class NoteDetailPanel(VerticalScroll):
         width: 100%;
         height: auto;
         align: center middle;
-        padding: 1 0 0 0;
+        padding: 0;
     }
 
     NoteDetailPanel Button {
@@ -111,21 +104,17 @@ class NoteDetailPanel(VerticalScroll):
         super().__init__(**kwargs)
         self._note_data = note_data
 
+        # Set border title
+        title = note_data.title or "Untitled Note"
+        self.border_title = title
+
     def compose(self) -> ComposeResult:
         """Compose the note detail view"""
         divider = ("─" * 60) if USE_UNICODE else ("-" * 60)
         tag_icon = "#"
 
-        # Title
-        title_text = self._note_data.title or "Untitled Note"
-        yield Static(
-            f"[bold cyan]{title_text}[/bold cyan]",
-            classes="title"
-        )
-
         # ID
         yield Static(f"[dim]ID: {self._note_data.id[:16]}...[/dim]", classes="field-value")
-        yield Static("", classes="field-value")  # Spacing
 
         # Tags
         if self._note_data.tags:
@@ -191,6 +180,7 @@ class NoteDetailPanel(VerticalScroll):
         self.app.state.edit_mode_is_new = False
         self.app.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
 
+    @work(exclusive=True)
     async def action_delete_note(self) -> None:
         """Delete note with confirmation (d)"""
         from textual_widgets.confirm_dialog import ConfirmDialog

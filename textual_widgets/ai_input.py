@@ -35,7 +35,7 @@ class AIInput(Input):
 
     def __init__(self, **kwargs):
         super().__init__(
-            placeholder="Ask AI about your tasks... (Press Enter to send, Esc to cancel)",
+            placeholder="🤖 AI: ask anything... | ? to focus | Enter to send",
             **kwargs
         )
         self.history: List[str] = []  # Command history

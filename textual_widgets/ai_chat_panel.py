@@ -15,14 +15,8 @@ from core.state import AppState
 class MessageBubble(Static):
     """A single message bubble (user or assistant)"""
 
-    # Make focusable for keyboard navigation
-    can_focus = True
-
-    # Key bindings for copy functionality
-    BINDINGS = [
-        ("c", "copy", "Copy message"),
-        ("y", "copy", "Copy message"),
-    ]
+    # Not focusable - user navigates the AI chat panel itself
+    can_focus = False
 
     def __init__(self, message: AIMessage, **kwargs):
         # Disable markup so partial streaming chunks can't break Rich parser

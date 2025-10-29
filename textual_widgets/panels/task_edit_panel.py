@@ -11,6 +11,7 @@ from textual.widgets import Static, Input, Select, Label
 from textual.binding import Binding
 from textual.reactive import reactive
 from textual.validation import Length
+from textual import work
 
 from models.task import Task
 from utils.tag_parser import parse_tags
@@ -39,86 +40,74 @@ class TaskEditPanel(VerticalScroll):
     TaskEditPanel {
         width: 100%;
         height: 1fr;
-        border: solid yellow;  /* Yellow = edit mode */
+        border: solid #404040;
         background: $surface;
-        padding: 1 2;
+        padding: 0 1;
     }
 
     TaskEditPanel:focus-within {
-        border: solid yellow 2px;
-    }
-
-    TaskEditPanel Static.title {
-        width: 100%;
-        content-align: center middle;
-        text-style: bold;
-        color: yellow;
-        padding: 0 0 1 0;
+        border: solid #ffdb7a;
     }
 
     TaskEditPanel Static.error {
         color: red;
         width: 100%;
         height: auto;
-        padding: 0 0 1 0;
+        padding: 0;
     }
 
     TaskEditPanel Static.label {
-        width: 15;
+        width: 12;
         content-align: right middle;
         padding: 0 1 0 0;
         color: cyan;
-        text-style: bold;
     }
 
     TaskEditPanel .field-row {
         width: 100%;
         height: auto;
-        margin: 0 0 1 0;
+        margin: 0;
     }
 
     TaskEditPanel Input {
         width: 1fr;
-        border: solid cyan;
+        border: solid #404040;
         background: $surface;
     }
 
     TaskEditPanel Input:focus {
-        border: solid yellow;
+        border: solid #ffdb7a;
         background: $panel;
     }
 
     TaskEditPanel Select {
         width: 1fr;
-        border: solid cyan;
+        border: solid #404040;
     }
 
     TaskEditPanel Select:focus {
-        border: solid yellow;
+        border: solid #ffdb7a;
     }
 
     TaskEditPanel Static.hint {
         color: $text-muted;
         width: 100%;
         height: auto;
-        padding: 0 0 1 15;
-        text-style: italic;
-        font-size: 0.9;
+        padding: 0 0 0 13;
     }
 
     TaskEditPanel Static.hint-main {
         color: $text-muted;
         width: 100%;
         text-align: center;
-        padding: 1 0 0 0;
-        text-style: italic;
+        padding: 0;
     }
 
     TaskEditPanel Static.dirty-indicator {
-        color: yellow;
+        color: #ffdb7a;
         width: 100%;
         text-align: center;
-        padding: 0 0 1 0;
+        padding: 0;
     }
     """
 
@@ -154,11 +143,14 @@ class TaskEditPanel(VerticalScroll):
         self.existing_tags = existing_tags or []
         self._original_values = {}  # For dirty tracking
 
+        # Set border title
+        if is_new:
+            self.border_title = "Create New Task"
+        else:
+            self.border_title = f"Edit Task #{task_data.id}"
+
     def compose(self) -> ComposeResult:
         """Compose the edit form"""
-        title = "Create New Task" if self._is_new else f"Edit Task #{self._task_data.id}"
-
-        yield Static(title, classes="title")
         yield Static("", id="error_message", classes="error")
         yield Static("", id="dirty_indicator", classes="dirty-indicator")
 
@@ -185,7 +177,6 @@ class TaskEditPanel(VerticalScroll):
                 value=self._task_data.comment if self._task_data else "",
                 id="comment_input",
             )
-        yield Static("Brief note or context", classes="hint")
 
         # Description field (optional)
         with Horizontal(classes="field-row"):
@@ -195,7 +186,6 @@ class TaskEditPanel(VerticalScroll):
                 value=self._task_data.description if self._task_data else "",
                 id="description_input",
             )
-        yield Static("Full details and requirements", classes="hint")
 
         # Priority (select dropdown)
         with Horizontal(classes="field-row"):
@@ -216,25 +206,10 @@ class TaskEditPanel(VerticalScroll):
             yield Static("Tags:", classes="label")
             tags_value = ", ".join(self._task_data.tags) if self._task_data else ""
             yield Input(
-                placeholder="tag1, tag2, tag3 (max 3)",
+                placeholder="tag1, tag2, tag3",
                 value=tags_value,
                 id="tags_input",
             )
-
-        # Tag suggestions
-        if self.existing_tags:
-            existing_tags_str = ", ".join(sorted(self.existing_tags[:10]))
-            if len(self.existing_tags) > 10:
-                existing_tags_str += f", ... ({len(self.existing_tags)} total)"
-            yield Static(f"Existing: {existing_tags_str}", classes="hint")
-        else:
-            yield Static("Separate tags with commas", classes="hint")
-
-        # Action hints
-        yield Static(
-            "[dim]Ctrl+S to save | Esc to cancel | AI chat available on the right →[/dim]",
-            classes="hint-main"
-        )
 
     def on_mount(self) -> None:
         """Focus name input and capture original values"""
@@ -368,8 +343,11 @@ class TaskEditPanel(VerticalScroll):
         # Save to file
         self.app.state.save_to_file(self.app.tasks_file, self.app.console)
 
+    @work(exclusive=True)
     async def action_cancel(self) -> None:
         """Cancel editing with dirty check (Esc)"""
+        from core.state import LeftPanelMode
+
         # Check if dirty
         if self.is_dirty:
             from textual_widgets.confirm_dialog import ConfirmDialog
@@ -382,8 +360,6 @@ class TaskEditPanel(VerticalScroll):
                 return
 
         # Return to previous state
-        from core.state import LeftPanelMode
-
         if self._is_new:
             # Creating new task - return to list
             self.app.state.left_panel_mode = LeftPanelMode.LIST_TASKS

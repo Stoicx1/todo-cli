@@ -13,7 +13,7 @@ from textual.widgets import Header, Static
 from textual.reactive import reactive
 from textual import work
 
-from core.state import AppState
+from core.state import AppState, LeftPanelMode
 from core.commands import handle_command
 from core.suggestions import LocalSuggestions
 from textual_widgets.task_table import TaskTable
@@ -48,68 +48,72 @@ class LayoutMode(Enum):
 _CSS_DARK_THEME = """
 /*
 Textual CSS Styling for Todo CLI
-Dark theme (safe, no experimental properties)
+Dark theme - Black background with white/gray text and yellow accents
 */
 
-/* Color palette */
-$primary: #0891b2;
-$secondary: #06b6d4;
-$surface: #1e293b;
-$panel: #334155;
-$background: #0f172a;
-$text: #f1f5f9;
-$text-muted: #94a3b8;
+/* Color palette - Pastel theme */
+$primary: #1a1a1a;
+$secondary: #c9a959;
+$surface: #0a0a0a;
+$panel: #1a1a1a;
+$background: #000000;
+$text: #d0d0d0;
+$text-muted: #888888;
+$accent: #c9a959;
+$accent-bright: #e6c86f;
+$accent-focus: #ffdb7a;
 
 Screen { background: $surface; overflow-y: hidden; }
 
 #app_layout { height: 1fr; layout: vertical; }
-#bottom_section { height: auto; layout: vertical; }
 
 Header { background: $primary; color: $text; height: 3; content-align: center middle; }
 Header .header--title { color: $text; text-style: bold; }
 
-DataTable { height: 1fr; border: solid cyan; background: $surface; }
+DataTable { height: 1fr; border: solid #404040; background: $surface; }
 DataTable > .datatable--header { background: $primary; color: $text; text-style: bold; }
-DataTable > .datatable--cursor { background: $secondary; color: $text; }
-DataTable:focus > .datatable--cursor { background: cyan 20%; color: $text; text-style: bold; }
+DataTable > .datatable--cursor { background: $panel; color: $text; }
+DataTable:focus { border: solid $accent-focus; }
+DataTable:focus > .datatable--cursor { background: $accent 30%; color: #000000; text-style: bold; }
 DataTable > .datatable--odd-row { background: $surface; }
 DataTable > .datatable--even-row { background: $panel; }
 
-StatusBar { height: 4; border: solid cyan; background: $panel; padding: 1 2; content-align: left middle; }
+StatusBar { height: 4; border: solid #404040; background: #3a3a3a; padding: 0 2; text-align: left; color: #ffffff; }
 
 Footer { background: $primary; color: $text; }
 
-Button { width: auto; min-width: 12; height: 3; border: solid cyan; background: $panel; color: $text; }
-Button:hover { background: cyan 20%; border: solid cyan; }
-Button:focus { background: cyan; color: $background; text-style: bold; }
+Button { width: auto; min-width: 12; height: 3; border: solid $accent; background: $panel; color: $text; }
+Button:hover { background: $accent 20%; border: solid $accent-bright; }
+Button:focus { background: $accent; color: $background; text-style: bold; }
 
-Input { border: solid cyan; background: $surface; color: $text; }
-Input:focus { border: solid cyan; background: $panel; }
+Input { border: solid #404040; background: $surface; color: $text; }
+Input:focus { border: solid $accent-focus; background: $panel; }
 
-#command_input { height: 3; border: solid cyan; background: $panel; dock: bottom; margin: 0 0 1 0; }
-#command_input:focus { border: solid cyan; background: $surface; }
+#command_input { height: 6; border: solid #c9a959; background: $panel; dock: bottom; margin: 0 0 1 0; }
+#command_input:focus { border: solid $accent-focus; background: $surface; }
 
 ModalScreen { background: #000000 70%; }
 TaskForm Input.-invalid { border: solid red; }
-TaskForm Select { border: solid cyan; }
+TaskForm Select { border: solid $accent; }
 ConfirmDialog Button#confirm { background: red 30%; color: white; }
 ConfirmDialog Button#confirm:hover { background: red; }
-ConfirmDialog Button#cancel { background: cyan 30%; }
-ConfirmDialog Button#cancel:hover { background: cyan; }
+ConfirmDialog Button#cancel { background: $accent 30%; }
+ConfirmDialog Button#cancel:hover { background: $accent; }
 
 #main_container { height: 1fr; layout: horizontal; }
 
 LeftPanelContainer { width: 70%; height: 1fr; overflow-y: auto; }
 
-#ai_chat_panel { width: 30%; height: 1fr; overflow-y: auto; border: solid cyan; background: $panel; padding: 1; }
+#ai_chat_panel { width: 30%; height: 1fr; overflow-y: auto; border: solid #404040; background: $panel; padding: 1; }
+#ai_chat_panel:focus-within { border: solid $accent-focus; }
 #ai_chat_panel .empty-state { color: $text-muted; text-align: center; padding: 2; }
 
-MessageBubble { padding: 1 2; margin: 1 0; border: solid #94a3b8; background: $surface; color: $text; }
-MessageBubble.user-message { border: solid cyan; background: cyan 10%; }
-MessageBubble.ai-message { border: solid cyan; background: cyan 10%; }
+MessageBubble { padding: 1 2; margin: 1 0; border: solid #333333; background: $surface; color: $text; }
+MessageBubble.user-message { border: solid $accent; background: $accent 10%; }
+MessageBubble.ai-message { border: solid #404040; background: $panel; }
 
-#ai_input { height: 3; border: solid cyan; background: $panel; dock: bottom; margin: 1 0; }
-#ai_input:focus { border: solid cyan; background: $surface; }
+#ai_input { height: 3; border: solid #06b6d4; background: $panel; dock: bottom; margin: 1 0; }
+#ai_input:focus { border: solid $accent-focus; background: $surface; }
 """
 
 _CSS_LIGHT_THEME = """
@@ -130,7 +134,6 @@ $text-muted: #475569;
 Screen { background: $surface; overflow-y: hidden; }
 
 #app_layout { height: 1fr; layout: vertical; }
-#bottom_section { height: auto; layout: vertical; }
 
 Header { background: $primary; color: $text; height: 3; content-align: center middle; }
 Header .header--title { color: $text; text-style: bold; }
@@ -142,7 +145,7 @@ DataTable:focus > .datatable--cursor { background: $secondary 20%; color: $text;
 DataTable > .datatable--odd-row { background: $surface; }
 DataTable > .datatable--even-row { background: $panel; }
 
-StatusBar { height: 4; border: solid $secondary; background: $panel; padding: 1 2; content-align: left middle; color: $text; }
+StatusBar { height: 4; border: solid $secondary; background: $panel; padding: 0 2; text-align: left; color: $text; }
 
 Footer { background: $primary; color: $text; }
 
@@ -153,10 +156,10 @@ Button:focus { background: $secondary; color: $background; text-style: bold; }
 Input { border: solid $secondary; background: $surface; color: $text; }
 Input:focus { border: solid $secondary; background: $panel; }
 
-#command_input { height: 3; border: solid $secondary; background: $panel; dock: bottom; margin: 0 0 1 0; }
+#command_input { height: 3; border: solid #c9a959; background: $panel; dock: bottom; margin: 0 0 1 0; }
 #command_input:focus { border: solid $secondary; background: $surface; }
 
-ModalScreen { background: #000000 40%; }
+ModalScreen { background: #64748b 50%; }
 TaskForm Input.-invalid { border: solid red; }
 TaskForm Select { border: solid $secondary; }
 ConfirmDialog Button#confirm { background: red 30%; color: white; }
@@ -175,7 +178,7 @@ MessageBubble { padding: 1 2; margin: 1 0; border: solid #94a3b8; background: $s
 MessageBubble.user-message { border: solid $secondary; background: $secondary 10%; }
 MessageBubble.ai-message { border: solid $secondary; background: $secondary 10%; }
 
-#ai_input { height: 3; border: solid $secondary; background: $panel; dock: bottom; margin: 1 0; }
+#ai_input { height: 3; border: solid #06b6d4; background: $panel; dock: bottom; margin: 1 0; }
 #ai_input:focus { border: solid $secondary; background: $surface; }
 """
 
@@ -199,6 +202,10 @@ class TodoTextualApp(App):
     # switch back to False and use Ctrl+Shift+Y (copy) instead.
     ENABLE_SELECTION = True
 
+    # Disable Textual's built-in command palette (search feature)
+    # We use our own command input system instead
+    ENABLE_COMMAND_PALETTE = False
+
     # NOTE: CSS is NOT defined as a class variable (see CLAUDE.md)
     # Themes are loaded programmatically in on_mount() to prevent
     # Textual from auto-loading a default theme that conflicts with user preference
@@ -206,8 +213,8 @@ class TodoTextualApp(App):
     BINDINGS = [
         Binding("q", "quit", "Quit", priority=True),
         Binding("ctrl+k", "toggle_command_mode", "Command", show=True),
+        Binding("ctrl+slash", "smart_input_toggle", "Toggle Input", show=True),
         Binding("/", "show_palette", "Palette", show=True),
-        Binding("ctrl+t", "toggle_theme", "Theme", show=True),
         Binding("a", "add_selected", "Add"),
         Binding("e", "edit_selected", "Edit"),
         Binding("x", "mark_done", "Done"),
@@ -292,6 +299,15 @@ class TodoTextualApp(App):
         # Log app initialization
         debug_log.info(f"TodoTextualApp initialized - tasks_file: {tasks_file}")
 
+    def on_load(self) -> None:
+        """
+        Called after __init__ but before compose - perfect timing for theme CSS application
+        This ensures CSS is loaded when widgets are created, preventing layout flash
+        """
+        debug_log.info("[ON_LOAD] Loading and applying theme CSS...")
+        self._load_and_apply_theme_early()
+        debug_log.info("[ON_LOAD] Theme CSS application completed")
+
     def compose(self) -> ComposeResult:
         """
         Compose the application layout
@@ -331,23 +347,26 @@ class TodoTextualApp(App):
                 yield AIChatPanel(self.state, id="ai_chat_panel")
                 debug_log.info("AIChatPanel created")
 
-            # Bottom section with fixed heights (StatusBar + inputs)
-            with Vertical(id="bottom_section"):
-                debug_log.info("Creating StatusBar widget...")
-                yield StatusBar(id="status_bar")
-                debug_log.info("StatusBar created")
+            # StatusBar (fixed height, above docked inputs)
+            debug_log.info("Creating StatusBar widget...")
+            yield StatusBar(id="status_bar")
+            debug_log.info("StatusBar created")
 
-                debug_log.info("Creating CommandInput widget...")
-                yield CommandInput(id="command_input")
-                debug_log.info("CommandInput created")
+        # Docked widgets (outside app_layout so they dock to screen bottom)
+        # NOTE: Textual stacks dock:bottom in REVERSE order of yield
+        # Yield order: Footer → AIInput → CommandInput
+        # Visual order (top to bottom): CommandInput → AIInput → Footer
+        debug_log.info("Creating ContextFooter widget...")
+        yield ContextFooter()
+        debug_log.info("ContextFooter created")
 
-                debug_log.info("Creating AIInput widget...")
-                yield AIInput(id="ai_input")
-                debug_log.info("AIInput created")
+        debug_log.info("Creating AIInput widget...")
+        yield AIInput(id="ai_input")
+        debug_log.info("AIInput created")
 
-            debug_log.info("Creating ContextFooter widget...")
-            yield ContextFooter()
-            debug_log.info("ContextFooter created")
+        debug_log.info("Creating CommandInput widget...")
+        yield CommandInput(id="command_input")
+        debug_log.info("CommandInput created")
 
         debug_log.info("compose() completed - All widgets created")
 
@@ -370,11 +389,8 @@ class TodoTextualApp(App):
             # Keep original title on failure; do not crash UI
             pass
 
-        # Apply persisted theme (if any) early
-        try:
-            self._load_theme_preference()
-        except Exception:
-            pass
+        # NOTE: Theme CSS already applied during __init__ via _load_and_apply_theme_early()
+        # _current_theme is already set, no additional loading needed
 
         # Debug: Check if handlers exist
         has_catch_all = hasattr(self, 'on_message')
@@ -515,6 +531,9 @@ class TodoTextualApp(App):
             debug_log.warning(f"Failed to register signal handlers: {e}")
             debug_log.warning("Graceful shutdown via Ctrl+C may not work properly")
 
+        # NOTE: Theme CSS already applied during __init__ - no deferred refresh needed
+        # Widgets initialize with correct CSS from the start, preventing layout flash
+
         debug_log.info("=" * 80)
         debug_log.info("on_mount() COMPLETED - App should now be visible")
         debug_log.info("=" * 80)
@@ -522,137 +541,59 @@ class TodoTextualApp(App):
     # ------------------------------------------------------------------
     # Theme switching
     # ------------------------------------------------------------------
-    def _save_theme_preference(self) -> None:
-        from pathlib import Path
-        import json as _json
-        try:
-            from config import DEFAULT_SETTINGS_FILE
-            settings_path = Path(DEFAULT_SETTINGS_FILE)
-            existing: dict = {}
-            if settings_path.exists():
-                try:
-                    existing = _json.loads(settings_path.read_text(encoding="utf-8"))
-                except Exception:
-                    existing = {}
-            existing["theme"] = self._current_theme or "dark"
-            tmp = settings_path.with_suffix(settings_path.suffix + ".tmp")
-            tmp.write_text(_json.dumps(existing, indent=2), encoding="utf-8")
-            try:
-                import os as _os
-                _os.replace(tmp, settings_path)
-            except Exception:
-                settings_path.write_text(_json.dumps(existing, indent=2), encoding="utf-8")
-        except Exception:
-            pass
-
-    def _load_theme_preference(self) -> None:
+    def _load_and_apply_theme_early(self) -> None:
         """
-        Load theme preference from settings and apply it.
+        Load theme from config and apply CSS before compose().
 
-        If no preference exists or loading fails, apply default "dark" theme.
-        This ensures a theme is ALWAYS applied at startup, preventing Textual
-        from using any class-level CSS (which doesn't exist anymore).
+        Ensures CSS is available when widgets initialize, preventing layout flash.
+        Called from on_load() which runs after __init__ but before compose().
         """
-        from pathlib import Path
-        import json as _json
-        import time
+        from core.theme_config import get_theme_config, get_theme_config_path
 
-        debug_log.info("[THEME_LOAD] Starting theme preference load...")
+        # Load theme from config file (defaults to "dark" if missing/invalid)
+        config_path = get_theme_config_path()
+        debug_log.info(f"Loading theme from: {config_path}")
 
-        # Default theme if no preference found
-        theme_name = "dark"
+        theme_name = get_theme_config()
+        self._current_theme = theme_name
 
+        debug_log.info(f"Theme loaded: '{theme_name}'")
+
+        # Apply theme CSS
         try:
-            from config import DEFAULT_SETTINGS_FILE
-            settings_path = Path(DEFAULT_SETTINGS_FILE)
-            debug_log.debug(f"[THEME_LOAD] Settings file: {settings_path}")
-            debug_log.debug(f"[THEME_LOAD] Settings file exists: {settings_path.exists()}")
+            css_length = len(self._THEMES[theme_name])
+            debug_log.info(f"Applying theme CSS (length: {css_length} chars)")
 
-            if settings_path.exists():
-                data = _json.loads(settings_path.read_text(encoding="utf-8"))
-                debug_log.debug(f"[THEME_LOAD] Settings data: {data}")
-                saved_theme = (data.get("theme") or "dark").lower()
-                debug_log.debug(f"[THEME_LOAD] Saved theme: {saved_theme}")
-                if saved_theme in self._THEMES:
-                    theme_name = saved_theme
-                    debug_log.info(f"[THEME_LOAD] Using saved theme: {theme_name}")
-                else:
-                    debug_log.warning(f"[THEME_LOAD] Unknown theme '{saved_theme}', using default")
-            else:
-                debug_log.info(f"[THEME_LOAD] No settings file, using default theme: {theme_name}")
-        except Exception as e:
-            # If any error, use default theme
-            debug_log.warning(f"[THEME_LOAD] Error reading settings: {e}, using default")
-
-        # ALWAYS apply a theme (either saved preference or default)
-        try:
-            start_time = time.time()
-            self._current_theme = theme_name
-            debug_log.debug(f"[THEME_LOAD] Current theme set to: {theme_name}")
-
-            # Add theme source and parse (Textual handles source management internally)
-            debug_log.debug(f"[THEME_LOAD] Adding theme source (CSS length: {len(self._THEMES[theme_name])} chars)")
             self.stylesheet.add_source(self._THEMES[theme_name], tie_breaker=1000)
-            debug_log.debug("[THEME_LOAD] Reparsing stylesheet...")
-            self.stylesheet.reparse()  # Re-parse all sources
-            debug_log.debug("[THEME_LOAD] Refreshing UI...")
-            self.refresh()  # Refresh UI to apply theme immediately
+            self.stylesheet.reparse()
 
-            elapsed = (time.time() - start_time) * 1000
-            debug_log.info(f"[THEME_LOAD] ✓ Theme '{theme_name}' loaded and applied in {elapsed:.2f}ms")
+            debug_log.info(f"Theme '{theme_name}' applied successfully")
         except Exception as e:
-            debug_log.error(f"[THEME_LOAD] ✗ Failed to load theme '{theme_name}': {e}", exception=e)
+            debug_log.error(f"Failed to apply theme CSS: {e}", exception=e)
 
-    def action_toggle_theme(self) -> None:
-        nxt = "light" if (self._current_theme or "dark") == "dark" else "dark"
-        self.action_switch_theme(nxt)
+    def get_system_commands(self, screen):
+        """
+        Override Textual's built-in system commands to exclude theme-related commands.
 
-    def action_switch_theme(self, theme: str) -> None:
-        import time
+        Filters out theme toggling commands from the command palette since we use
+        config-based theming (restart required to change themes).
 
-        name = (theme or "").strip().lower()
-        old_theme = self._current_theme or "none"
+        Returns:
+            Filtered list of system commands without theme-related entries
+        """
+        # Get default system commands from parent App class
+        commands = super().get_system_commands(screen)
 
-        debug_log.info(f"[THEME_SWITCH] Switching theme: {old_theme} → {name}")
+        # Filter out theme-related commands
+        # Removes: "Change Theme", "Toggle Dark Mode", etc.
+        filtered_commands = [
+            cmd for cmd in commands
+            if not any(keyword in cmd.name.lower() for keyword in ['theme', 'dark', 'light'])
+        ]
 
-        if name not in self._THEMES:
-            debug_log.warning(f"[THEME_SWITCH] ✗ Unknown theme '{name}', available: {list(self._THEMES.keys())}")
-            try:
-                self.console.print(f"[yellow]Unknown theme '{theme}'. Available: {', '.join(self._THEMES)}[/yellow]")
-            except Exception:
-                pass
-            return
+        debug_log.debug(f"Filtered system commands: {len(commands)} -> {len(filtered_commands)}")
 
-        try:
-            start_time = time.time()
-
-            # Add new theme source and re-parse (Textual handles source management)
-            debug_log.debug(f"[THEME_SWITCH] Adding theme source (CSS length: {len(self._THEMES[name])} chars)")
-            self.stylesheet.add_source(self._THEMES[name], tie_breaker=1000)
-
-            debug_log.debug("[THEME_SWITCH] Reparsing stylesheet...")
-            self.stylesheet.reparse()  # Re-parse all sources
-
-            self._current_theme = name
-            debug_log.debug(f"[THEME_SWITCH] Current theme set to: {name}")
-
-            debug_log.debug("[THEME_SWITCH] Saving theme preference...")
-            self._save_theme_preference()
-
-            debug_log.debug("[THEME_SWITCH] Refreshing UI...")
-            try:
-                self.refresh()
-            except Exception as e:
-                debug_log.warning(f"[THEME_SWITCH] Refresh failed: {e}")
-
-            elapsed = (time.time() - start_time) * 1000
-            debug_log.info(f"[THEME_SWITCH] ✓ Theme switched to '{name}' in {elapsed:.2f}ms")
-        except Exception as e:
-            debug_log.error(f"[THEME_SWITCH] ✗ Failed to switch theme to '{name}': {e}", exception=e)
-            try:
-                self.console.print(f"[red]Failed to load theme '{name}': {e}[/red]")
-            except Exception:
-                pass
+        return filtered_commands
 
     def watch_left_panel_mode(self, old_mode, new_mode) -> None:
         """
@@ -795,11 +736,6 @@ class TodoTextualApp(App):
             self.notify("Screen refreshed")
             return
 
-        # Theme switch (runtime) via command: `theme dark|light`
-        if cmd == "theme" and len(parts) >= 2:
-            self.action_switch_theme(parts[1])
-            return
-
         # Route form commands to action methods (UX unification)
         if cmd in ("add", "a"):
             # Mode-aware: creates task or note based on entity_mode
@@ -813,16 +749,26 @@ class TodoTextualApp(App):
                     # Try to select entity by ID
                     if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
                         note_id = parts[1]
-                        if self._note_table and self._note_table.select_note_by_id(note_id):
-                            pass  # Selection successful
-                        else:
+                        try:
+                            note_table = self.query_one(NoteTable)
+                            if note_table.select_note_by_id(note_id):
+                                pass  # Selection successful
+                            else:
+                                self.notify(f"Note {note_id[:8]}... not found", severity="error")
+                                return
+                        except Exception:
                             self.notify(f"Note {note_id[:8]}... not found", severity="error")
                             return
                     else:
                         task_id = int(parts[1])
-                        if self._task_table and self._task_table.select_task_by_id(task_id):
-                            pass  # Selection successful
-                        else:
+                        try:
+                            task_table = self.query_one(TaskTable)
+                            if task_table.select_task_by_id(task_id):
+                                pass  # Selection successful
+                            else:
+                                self.notify(f"Task #{task_id} not found", severity="error")
+                                return
+                        except Exception:
                             self.notify(f"Task #{task_id} not found", severity="error")
                             return
                 except (ValueError, AttributeError) as e:
@@ -856,7 +802,14 @@ class TodoTextualApp(App):
                     # Not a number - let handle_command handle it as filter
                     pass
             else:
-                task_id = self._task_table.get_selected_task_id()
+                # Get task_id from table or state
+                task_id = None
+                try:
+                    task_table = self.query_one(TaskTable)
+                    task_id = task_table.get_selected_task_id()
+                except Exception:
+                    task_id = self.state.selected_task_id
+
                 if task_id is not None:
                     self.action_show_task(task_id)
                 else:
@@ -968,7 +921,11 @@ class TodoTextualApp(App):
             # Hide command mode
             self._command_input.display = False
             self.command_mode = False
-            self._task_table.focus()
+            try:
+                task_table = self.query_one(TaskTable)
+                task_table.focus()
+            except Exception:
+                pass
         else:
             # Show command mode
             self._command_input.display = True
@@ -1018,7 +975,16 @@ class TodoTextualApp(App):
 
     def action_edit_task(self) -> None:
         """Switch to edit task panel for selected task"""
-        task_id = self._task_table.get_selected_task_id()
+        from textual_widgets.task_table import TaskTable
+
+        # Get task_id from table or use selected_task_id from state
+        task_id = None
+        try:
+            task_table = self.query_one(TaskTable)
+            task_id = task_table.get_selected_task_id()
+        except Exception:
+            # Task table not mounted, use state's selected_task_id if available
+            task_id = self.state.selected_task_id
 
         if task_id is None:
             self.notify("No task selected", severity="warning")
@@ -1058,7 +1024,13 @@ class TodoTextualApp(App):
 
     def action_mark_done(self) -> None:
         """Mark selected task as done"""
-        task_id = self._task_table.get_selected_task_id()
+        # Get task_id from table or state
+        task_id = None
+        try:
+            task_table = self.query_one(TaskTable)
+            task_id = task_table.get_selected_task_id()
+        except Exception:
+            task_id = self.state.selected_task_id
 
         if task_id is not None:
             task = self.state.get_task_by_id(task_id)
@@ -1071,7 +1043,13 @@ class TodoTextualApp(App):
 
     def action_mark_undone(self) -> None:
         """Mark selected task as undone"""
-        task_id = self._task_table.get_selected_task_id()
+        # Get task_id from table or state
+        task_id = None
+        try:
+            task_table = self.query_one(TaskTable)
+            task_id = task_table.get_selected_task_id()
+        except Exception:
+            task_id = self.state.selected_task_id
 
         if task_id is not None:
             task = self.state.get_task_by_id(task_id)
@@ -1085,7 +1063,13 @@ class TodoTextualApp(App):
     @work(exclusive=True)
     async def action_delete_task(self) -> None:
         """Delete selected task with confirmation (runs as worker to support modal dialog)"""
-        task_id = self._task_table.get_selected_task_id()
+        # Get task_id from table or state
+        task_id = None
+        try:
+            task_table = self.query_one(TaskTable)
+            task_id = task_table.get_selected_task_id()
+        except Exception:
+            task_id = self.state.selected_task_id
 
         if task_id is None:
             self.notify("No task selected", severity="warning")
@@ -1222,9 +1206,13 @@ class TodoTextualApp(App):
         """Edit the currently selected item based on mode - switches to edit panel"""
         if getattr(self.state, 'entity_mode', 'tasks') == 'notes':
             # Notes mode - switch to note edit panel
-            if not self._note_table:
-                return
-            note_id = self._note_table.get_selected_note_id()
+            note_id = None
+            try:
+                note_table = self.query_one(NoteTable)
+                note_id = note_table.get_selected_note_id()
+            except Exception:
+                note_id = self.state.selected_note_id
+
             if not note_id:
                 self.notify("No note selected", severity="warning")
                 return
@@ -1266,20 +1254,32 @@ class TodoTextualApp(App):
         self.state.entity_mode = "notes" if self.state.entity_mode == "tasks" else "tasks"
         self.refresh_table()
         # Focus appropriate table
-        if self.state.entity_mode == "tasks" and self._task_table:
-            self._task_table.focus()
-        elif self.state.entity_mode == "notes" and self._note_table:
-            self._note_table.focus()
+        if self.state.entity_mode == "tasks":
+            try:
+                task_table = self.query_one(TaskTable)
+                task_table.focus()
+            except Exception:
+                pass
+        elif self.state.entity_mode == "notes":
+            try:
+                note_table = self.query_one(NoteTable)
+                note_table.focus()
+            except Exception:
+                pass
         self.notify(f"Mode: {self.state.entity_mode}")
 
     def _ensure_note_selection(self) -> str | None:
         if self.state.entity_mode != "notes":
             self.notify("Switch to notes mode (m) to edit/link notes", severity="warning")
             return None
-        if not self._note_table:
-            self.notify("Note table not available", severity="error")
-            return None
-        note_id = self._note_table.get_selected_note_id()
+
+        note_id = None
+        try:
+            note_table = self.query_one(NoteTable)
+            note_id = note_table.get_selected_note_id()
+        except Exception:
+            note_id = self.state.selected_note_id
+
         if not note_id:
             self.notify("No note selected", severity="warning")
             return None
@@ -1357,10 +1357,16 @@ class TodoTextualApp(App):
 
     def action_open_note(self, note_id: str | None = None) -> None:
         """Switch to note detail panel"""
-        if self.state.entity_mode != "notes" or not self._note_table:
+        if self.state.entity_mode != "notes":
             return
+
         if not note_id:
-            note_id = self._note_table.get_selected_note_id()
+            try:
+                note_table = self.query_one(NoteTable)
+                note_id = note_table.get_selected_note_id()
+            except Exception:
+                note_id = self.state.selected_note_id
+
         if not note_id:
             self.notify("No note selected", severity="warning")
             return
@@ -1388,9 +1394,16 @@ class TodoTextualApp(App):
 
     @work(exclusive=True)
     async def action_delete_note(self) -> None:
-        if self.state.entity_mode != "notes" or not self._note_table:
+        if self.state.entity_mode != "notes":
             return
-        note_id = self._note_table.get_selected_note_id()
+
+        note_id = None
+        try:
+            note_table = self.query_one(NoteTable)
+            note_id = note_table.get_selected_note_id()
+        except Exception:
+            note_id = self.state.selected_note_id
+
         if not note_id:
             self.notify("No note selected", severity="warning")
             return
@@ -1418,9 +1431,16 @@ class TodoTextualApp(App):
 
     def action_duplicate_note(self) -> None:
         """Quickly duplicate the selected note (keeps links, adds 'Copy of' prefix)."""
-        if self.state.entity_mode != "notes" or not self._note_table:
+        if self.state.entity_mode != "notes":
             return
-        note_id = self._note_table.get_selected_note_id()
+
+        note_id = None
+        try:
+            note_table = self.query_one(NoteTable)
+            note_id = note_table.get_selected_note_id()
+        except Exception:
+            note_id = self.state.selected_note_id
+
         if not note_id:
             self.notify("No note selected", severity="warning")
             return
@@ -1439,11 +1459,11 @@ class TodoTextualApp(App):
         )
         self.state.refresh_notes_from_disk()
         self.refresh_table()
-        if self._note_table:
-            try:
-                self._note_table.select_note_by_id(new.id)
-                self._note_table.focus()
-            except Exception:
+        try:
+            note_table = self.query_one(NoteTable)
+            note_table.select_note_by_id(new.id)
+            note_table.focus()
+        except Exception:
                 pass
         self.notify(f"Duplicated note {src.id[:8]} → {new.id[:8]}")
 
@@ -1567,6 +1587,27 @@ Ctrl+Shift+C - Clear AI q - Quit
 
         # Focus AI input
         self._ai_input.focus_and_clear()
+
+    def action_smart_input_toggle(self) -> None:
+        """Smart toggle: focus appropriate input based on context (Ctrl+/)"""
+        from textual_widgets.ai_chat_panel import AIChatPanel
+        from textual_widgets.ai_input import AIInput
+
+        focused = self.focused
+
+        # If AI panel or AIInput is focused, ensure AIInput is shown and focused
+        if isinstance(focused, (AIChatPanel, AIInput)) or (
+            focused and hasattr(focused, 'id') and focused.id in ('ai_chat_panel', 'ai_input')
+        ):
+            # If AI hidden (TASKS_ONLY mode), cycle to show it
+            if self.layout_mode == LayoutMode.TASKS_ONLY:
+                self.action_toggle_ai_panel()
+
+            # Focus AI input
+            self._ai_input.focus_and_clear()
+        else:
+            # Otherwise, toggle CommandInput
+            self.action_toggle_command_mode()
 
     def action_clear_ai(self) -> None:
         """Clear AI conversation history (Ctrl+Shift+C)"""

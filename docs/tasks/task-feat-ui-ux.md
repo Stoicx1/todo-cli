@@ -71,8 +71,8 @@ Added explicit save tool for AI agent with file name display.
 - AI can explicitly save when user asks
 - Clear confirmation of what was saved
 
-### Theme CSS Switching & Fixes 🔧
-**Status:** In Progress
+### Theme CSS Switching & Fixes ✅
+**Status:** Completed
 
 Fixed CSS parsing issues and implemented theme switching system.
 
@@ -87,43 +87,106 @@ Fixed CSS parsing issues and implemented theme switching system.
 - Created `styles/theme-default-safe.tcss` - Safe fallback theme
 - Backup of broken CSS: `styles/app_broken_backup.tcss`
 - Following CLAUDE.md pattern: inline CSS only, no external CSS_PATH
+- Refactored to config-based theme system (no runtime switching)
 
 **Files:**
-- `styles/theme-dark.tcss` (5192 bytes)
-- `styles/theme-light.tcss` (5351 bytes)
-- `styles/theme-default-safe.tcss` (2590 bytes)
-- `styles/app_broken_backup.tcss` (broken version backup)
-
-**Next Steps:**
-- [ ] Integrate theme switching into main app
-- [ ] Add theme toggle command/keybinding
-- [ ] Test all themes for visual consistency
-- [ ] Document theme switching in user guide
-- [ ] Consider adding theme preference to settings.json
+- `core/theme_config.py` (new module)
+- `~/.todo_cli_theme.json` (user config file)
+- Deleted: `styles/theme-dark.tcss`, `styles/theme-light.tcss`, etc. (moved to inline CSS)
 
 **User Benefit:**
 - Multiple theme options (dark/light)
 - Stable CSS without parsing errors
 - Better visual customization
+- Predictable theme behavior (restart-based)
 
-## In Progress
+### Phase 3: Critical UI/UX Bug Fixes ✅
+**Completed:** 2025-10-29
 
-### Theme CSS Integration
-Integrate theme switching functionality into main application.
+Resolved multiple critical UI/UX issues reported by user.
 
-**Current State:**
-- Theme files created (dark, light, default-safe)
-- Need to wire up theme switching logic
-- Need to add user-facing commands
+#### StatusBar Visibility Fix (Critical - 7 iterations)
+**Problem:** StatusBar completely invisible despite generating content
+**Root Cause:** Incorrect height calculation for `box-sizing: border-box` model
 
-**Tasks:**
-- [ ] Add theme loading logic to `textual_app.py`
-- [ ] Create theme toggle command (e.g., `theme dark`, `theme light`)
-- [ ] Add keybinding for quick theme switching (e.g., Ctrl+T)
-- [ ] Save theme preference to `~/.todo_cli_settings.json`
-- [ ] Test theme switching without app restart
+**Solution:**
+- Fixed height formula: `total_height - borders - padding = content_space`
+- Changed height from 6 to 4 with padding: 0 2
+- Calculation: 4 rows - 2 border rows = 2 rows for 2-line content ✓
+- Added 37 comprehensive debug log statements
+- Removed `[dim]` markup tags causing dark text
+- Moved out of collapsing `#bottom_section` container
 
-### Phase 2B: Tool Execution Indicators
+**Files Modified:**
+- `textual_widgets/status_bar.py` (added debug logging)
+- `textual_app.py` (CSS changes for both themes)
+
+#### Detail Panel Button Fix
+**Problem:** Edit, Back, Delete buttons not working in detail panels
+**Root Cause:** Missing `@work(exclusive=True)` decorator on async delete methods
+
+**Solution:**
+- Added decorator and import to both TaskDetailPanel and NoteDetailPanel
+
+**Files Modified:**
+- `textual_widgets/panels/task_detail_panel.py`
+- `textual_widgets/panels/note_detail_panel.py`
+
+#### Detail Panel Spacing Reduction
+**Problem:** Excessive vertical spacing (~12-15 wasted rows) requiring too much scrolling
+
+**Solution:**
+- Systematically removed all unnecessary padding
+- Field labels: 1 row → 0 rows
+- Field values: 1 row → 0 rows
+- Dividers: 2 rows → 0 rows
+- Markdown: 4 rows (padding+margin) → 1 row (padding only)
+- Removed empty Static spacer elements
+
+**Files Modified:**
+- `textual_widgets/panels/task_detail_panel.py` (CSS changes)
+- `textual_widgets/panels/note_detail_panel.py` (CSS changes)
+
+#### Layout Order Fix
+**Problem:** Wrong stacking order (status → footer → AI input)
+
+**Solution:**
+- Added `dock: bottom` to ContextFooter
+- Reordered yield statements (Textual stacks bottom-docked widgets in reverse)
+- Result: StatusBar → AIInput → Footer ✓
+
+**Files Modified:**
+- `textual_widgets/context_footer.py`
+- `textual_app.py` (layout reordering)
+
+#### Input Switching UX Improvements
+**Problem:** Confusing input switching, identical visual appearance, no unified toggle
+
+**Solution:**
+- Distinct border colors (CommandInput: yellow #c9a959, AIInput: cyan #06b6d4)
+- Emoji prefixes (⚡ CMD, 🤖 AI)
+- Smart toggle keybinding (Ctrl+/) - context-aware
+- Updated footer hints
+
+**Files Modified:**
+- `textual_app.py` (CSS, keybindings, smart toggle action)
+- `textual_widgets/command_input.py` (placeholder)
+- `textual_widgets/ai_input.py` (placeholder)
+- `textual_widgets/context_footer.py` (footer hints)
+
+**Cleanup:**
+- Removed 8 temporary debug files used during investigation
+
+**User Benefit:**
+- StatusBar now visible with proper contrast
+- Detail panel buttons fully functional
+- Compact detail panels (~50% less scrolling)
+- Clear visual distinction between input types
+- Unified input toggle for better UX
+
+## Planned Work (Future Enhancements)
+
+### Phase 4: Tool Execution Indicators
 Show real-time tool usage during AI operations.
 
 **Plan:**
@@ -137,8 +200,6 @@ Show real-time tool usage during AI operations.
 **Files to Modify:**
 - `textual_app.py` - Enhanced streaming callback
 - `core/ai_agent.py` - Tool event callbacks
-
-## Planned Work
 
 ### Phase 2C: Polish & Animations
 **Estimated Time:** 15 minutes

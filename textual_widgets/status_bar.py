@@ -20,7 +20,9 @@ class StatusBar(Static):
 
     def __init__(self, **kwargs):
         """Initialize status bar with placeholder"""
+        from debug_logger import debug_log
         super().__init__("Loading status...", **kwargs)
+        debug_log.info("[STATUSBAR] Widget initialized with placeholder text")
 
     def update_from_state(self, state: AppState) -> None:
         """
@@ -30,7 +32,7 @@ class StatusBar(Static):
             state: Application state
         """
         from debug_logger import debug_log
-        debug_log.debug(f"StatusBar.update_from_state() called with {len(state.tasks)} tasks")
+        debug_log.info(f"[STATUSBAR] Starting update_from_state with {len(state.tasks)} tasks")
 
         # Calculate stats
         total = len(state.tasks)
@@ -49,11 +51,11 @@ class StatusBar(Static):
 
         # Line 1: Navigation and context
         line1 = (
-            f"Page [cyan bold]{current_page}[/cyan bold][dim]/{total_pages}[/dim]  •  "
-            f"[bold]{shown}[/bold][dim]/{total_filtered}[/dim] showing  •  "
+            f"Page [cyan bold]{current_page}[/cyan bold]/{total_pages}  •  "
+            f"[bold]{shown}[/bold]/{total_filtered} showing  •  "
             f"mode=[magenta]{getattr(state, 'entity_mode', 'tasks')}[/magenta]  •  "
             f"view=[magenta]{state.view_mode}[/magenta]  •  "
-            f"[blue]{order_arrow} {state.sort}[/blue] [dim]({state.sort_order})[/dim]"
+            f"[blue]{order_arrow} {state.sort}[/blue] ({state.sort_order})"
         )
         # If in notes mode, append selected note title when available
         try:
@@ -68,7 +70,7 @@ class StatusBar(Static):
                         title = (note.title or '')
                         if len(title) > 30:
                             title = title[:30] + '…'
-                        line1 += f"  •  note: [dim]{title}[/dim]"
+                        line1 += f"  •  note: {title}"
         except Exception:
             pass
 
@@ -86,7 +88,7 @@ class StatusBar(Static):
                 focus_id
             )
             if friendly:
-                line1 += f"  •  focus: [dim]{friendly}[/dim]"
+                line1 += f"  •  focus: {friendly}"
         except Exception:
             pass
 
@@ -111,7 +113,25 @@ class StatusBar(Static):
         # Combine lines
         status_markup = f"{line1}\n{line2}"
 
-        debug_log.debug(f"StatusBar content: {status_markup[:100]}")
+        # Log content details
+        debug_log.info(f"[STATUSBAR] Generated content ({len(status_markup)} chars): {status_markup[:150]}...")
+
+        # Log widget state before update
+        try:
+            debug_log.info(f"[STATUSBAR] Widget before update: visible={self.visible}, display={self.display}, size={self.size}")
+            debug_log.info(f"[STATUSBAR] Content region: {self.content_region}, content_size={self.content_size}")
+        except Exception as e:
+            debug_log.warning(f"[STATUSBAR] Could not log widget state: {e}")
 
         # Update widget content
+        debug_log.info(f"[STATUSBAR] Calling self.update() with {len(status_markup)} chars")
         self.update(status_markup)
+
+        # Log widget state after update
+        try:
+            debug_log.info(f"[STATUSBAR] Widget after update: renderable type={type(self.renderable).__name__}")
+            debug_log.info(f"[STATUSBAR] Renderable preview: {str(self.renderable)[:100]}...")
+        except Exception as e:
+            debug_log.warning(f"[STATUSBAR] Could not log post-update state: {e}")
+
+        debug_log.info("[STATUSBAR] update_from_state() completed successfully")

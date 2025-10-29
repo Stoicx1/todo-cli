@@ -6,6 +6,54 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 
 ## [Unreleased]
 
+### Fixed
+- **StatusBar Visibility** - Fixed critical rendering issue caused by incorrect height calculation
+  - Resolved box-sizing: border-box height formula (7 debugging iterations)
+  - Added comprehensive debug logging for StatusBar updates (37 log statements)
+  - Removed `[dim]` markup tags causing insufficient contrast
+  - Moved out of collapsing `#bottom_section` container
+  - StatusBar now displays 2-line status with proper visibility
+
+- **Detail Panel Buttons** - Fixed non-functional Edit/Back/Delete buttons
+  - Added missing `@work(exclusive=True)` decorator to async delete methods
+  - Affects TaskDetailPanel and NoteDetailPanel
+  - Buttons now properly show confirmation dialogs
+
+- **Detail Panel Spacing** - Reduced excessive vertical spacing by ~12-15 rows
+  - Removed unnecessary padding from field labels, values, dividers
+  - Removed Markdown margin causing extra space
+  - Eliminated empty Static spacer elements
+  - Panels now match compact design of edit panels
+
+- **Layout Order** - Corrected bottom widget stacking order
+  - StatusBar → AIInput → ContextFooter (was: StatusBar → Footer → AIInput)
+  - Added `dock: bottom` to ContextFooter for proper floating behavior
+  - Fixed Textual reverse stacking order pattern
+
+- **Input Switching UX** - Enhanced visual distinction and navigation
+  - CommandInput: yellow border (#c9a959) with ⚡ CMD prefix
+  - AIInput: cyan border (#06b6d4) with 🤖 AI prefix
+  - Added smart toggle (Ctrl+/) for context-aware input focus
+  - Updated footer hints to show new keybindings
+  - Improved discoverability and reduced confusion
+
+### Changed
+- **Theme System Refactoring** - Replaced complex runtime switching with simple config-based approach
+  - Removed runtime theme switching (Ctrl+T keybinding removed)
+  - Theme changes now require app restart (predictable, maintainable)
+  - New configuration file: `~/.todo_cli_theme.json` (auto-created on first run)
+  - Added `core/theme_config.py` module for clean separation of concerns
+  - Maintains both dark and light themes (dark default)
+  - Reduced theme-related code by ~380 lines (-79%)
+  - Added 25 comprehensive unit tests in `tests/test_theme_config.py`
+
+### Removed
+- Runtime theme switching methods (`action_toggle_theme`, `action_switch_theme`)
+- Theme preference storage in `~/.todo_cli_settings.json` (now uses separate theme config)
+- Test files: `test_theme_switch.py`
+- Documentation: `THEME_LAYOUT_FIX.md`, `PERFORMANCE_ANALYSIS.md`, `PERFORMANCE_OPTIMIZATIONS.md`
+- Screenshot files and `styles/archive/` directory
+
 ## [0.2.0] - 2025-10-27
 
 ### Added

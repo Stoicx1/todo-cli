@@ -22,6 +22,7 @@ from textual_widgets.panels.task_detail_panel import TaskDetailPanel
 from textual_widgets.panels.task_edit_panel import TaskEditPanel
 from textual_widgets.panels.note_detail_panel import NoteDetailPanel
 from textual_widgets.panels.note_edit_panel import NoteEditPanel
+from debug_logger import debug_log
 
 
 class LeftPanelContainer(Container):
@@ -44,6 +45,11 @@ class LeftPanelContainer(Container):
         height: 1fr;
         layout: vertical;
         background: $surface;
+        border: solid #404040;
+    }
+
+    LeftPanelContainer:focus-within {
+        border: solid #ffdb7a;
     }
     """
 
@@ -53,6 +59,9 @@ class LeftPanelContainer(Container):
     def __init__(self, **kwargs):
         super().__init__(**kwargs, id="left_panel_container")
         self._current_panel: Widget | None = None
+
+        # Set initial border title
+        self.border_title = "Tasks"
 
     def compose(self) -> ComposeResult:
         """
@@ -72,6 +81,9 @@ class LeftPanelContainer(Container):
             old_mode: Previous panel mode
             new_mode: New panel mode to display
         """
+        debug_log.info(f"[LEFT_PANEL] ──────────────────────────────────────")
+        debug_log.info(f"[LEFT_PANEL] Mode change: {old_mode} → {new_mode}")
+        debug_log.info(f"[LEFT_PANEL] ──────────────────────────────────────")
         self._switch_to_mode(new_mode)
 
     def _switch_to_mode(self, mode: LeftPanelMode) -> None:
@@ -82,14 +94,35 @@ class LeftPanelContainer(Container):
             mode: Target panel mode
 
         Process:
-            1. Remove current panel (if any)
-            2. Create and mount appropriate panel
-            3. Focus new panel
+            1. Update border title based on mode
+            2. Remove current panel (if any)
+            3. Create and mount appropriate panel
+            4. Focus new panel
         """
+        import time
+        start_time = time.time()
+
+        # Update border title based on mode
+        mode_titles = {
+            LeftPanelMode.LIST_TASKS: "Tasks",
+            LeftPanelMode.DETAIL_TASK: "Task Detail",
+            LeftPanelMode.EDIT_TASK: "Edit Task",
+            LeftPanelMode.LIST_NOTES: "Notes",
+            LeftPanelMode.DETAIL_NOTE: "Note Detail",
+            LeftPanelMode.EDIT_NOTE: "Edit Note",
+        }
+        self.border_title = mode_titles.get(mode, "Panel")
+
+        debug_log.debug(f"[LEFT_PANEL] _switch_to_mode called with mode: {mode}")
+        debug_log.debug(f"[LEFT_PANEL] Current panel: {type(self._current_panel).__name__ if self._current_panel else 'None'}")
+        debug_log.debug(f"[LEFT_PANEL] Container children count: {len(list(self.children))}")
+
         # Remove current panel
         self._clear_current_panel()
 
         # Mount appropriate panel based on mode
+        debug_log.debug(f"[LEFT_PANEL] Mounting panel for mode: {mode}")
+
         if mode == LeftPanelMode.LIST_TASKS:
             self._mount_task_list()
 
@@ -108,42 +141,64 @@ class LeftPanelContainer(Container):
         elif mode == LeftPanelMode.EDIT_NOTE:
             self._mount_note_edit()
 
+        elapsed = (time.time() - start_time) * 1000
+        debug_log.info(f"[LEFT_PANEL] Mode switch completed in {elapsed:.2f}ms")
+        debug_log.debug(f"[LEFT_PANEL] New panel: {type(self._current_panel).__name__ if self._current_panel else 'None'}")
+        debug_log.debug(f"[LEFT_PANEL] New children count: {len(list(self.children))}")
+
     def _clear_current_panel(self) -> None:
         """Remove current panel from container"""
+        debug_log.debug(f"[LEFT_PANEL] Clearing current panel...")
+
         if self._current_panel:
+            panel_name = type(self._current_panel).__name__
+            debug_log.debug(f"[LEFT_PANEL] Removing current panel: {panel_name}")
             try:
                 self._current_panel.remove()
-            except Exception:
-                pass
+                debug_log.debug(f"[LEFT_PANEL] Panel {panel_name} removed successfully")
+            except Exception as e:
+                debug_log.warning(f"[LEFT_PANEL] Failed to remove panel {panel_name}: {e}")
             self._current_panel = None
 
         # Remove all children to ensure clean slate
-        for child in list(self.children):
-            try:
-                child.remove()
-            except Exception:
-                pass
+        children_count = len(list(self.children))
+        if children_count > 0:
+            debug_log.debug(f"[LEFT_PANEL] Removing {children_count} remaining children...")
+            for child in list(self.children):
+                try:
+                    child.remove()
+                except Exception as e:
+                    debug_log.warning(f"[LEFT_PANEL] Failed to remove child {type(child).__name__}: {e}")
+            debug_log.debug(f"[LEFT_PANEL] All children removed")
 
     def _mount_task_list(self) -> None:
         """Mount TaskTable for LIST_TASKS mode"""
         from textual_widgets.task_table import TaskTable
 
+        debug_log.debug(f"[LEFT_PANEL] _mount_task_list called")
+
         # Check if TaskTable already exists in app
         try:
             task_table = self.app.query_one(TaskTable)
+            debug_log.debug(f"[LEFT_PANEL] Found existing TaskTable, reparenting...")
             # Reparent to this container
             self.mount(task_table)
             self._current_panel = task_table
             task_table.focus()
-        except Exception:
+            debug_log.debug(f"[LEFT_PANEL] TaskTable reparented and focused")
+        except Exception as e:
             # Create new if not found
+            debug_log.debug(f"[LEFT_PANEL] No existing TaskTable found ({e}), creating new...")
             task_table = TaskTable(id="task_table")
             self.mount(task_table)
             self._current_panel = task_table
             task_table.focus()
+            debug_log.debug(f"[LEFT_PANEL] New TaskTable created and focused")
 
             # Update table from state
+            debug_log.debug(f"[LEFT_PANEL] Refreshing table from state...")
             self.app.refresh_table()
+            debug_log.debug(f"[LEFT_PANEL] Table refresh completed")
 
     def _mount_task_detail(self) -> None:
         """Mount TaskDetailPanel for DETAIL_TASK mode"""

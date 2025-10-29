@@ -10,6 +10,7 @@ from textual.containers import VerticalScroll, Horizontal, Vertical
 from textual.widgets import Static, Input, Label
 from textual.binding import Binding
 from textual.reactive import reactive
+from textual import work
 
 try:
     from textual.widgets import TextArea
@@ -40,65 +41,56 @@ class NoteEditPanel(VerticalScroll):
     NoteEditPanel {
         width: 100%;
         height: 1fr;
-        border: solid yellow;  /* Yellow = edit mode */
+        border: solid #404040;
         background: $surface;
-        padding: 1 2;
+        padding: 0 1;
     }
 
     NoteEditPanel:focus-within {
-        border: solid yellow 2px;
-    }
-
-    NoteEditPanel Static.title {
-        width: 100%;
-        content-align: center middle;
-        text-style: bold;
-        color: yellow;
-        padding: 0 0 1 0;
+        border: solid #ffdb7a;
     }
 
     NoteEditPanel Static.error {
         color: red;
         width: 100%;
         height: auto;
-        padding: 0 0 1 0;
+        padding: 0;
     }
 
     NoteEditPanel Static.label {
-        width: 15;
+        width: 10;
         content-align: right middle;
         padding: 0 1 0 0;
         color: cyan;
-        text-style: bold;
     }
 
     NoteEditPanel .field-row {
         width: 100%;
         height: auto;
-        margin: 0 0 1 0;
+        margin: 0;
     }
 
     NoteEditPanel Input {
         width: 1fr;
-        border: solid cyan;
+        border: solid #404040;
         background: $surface;
     }
 
     NoteEditPanel Input:focus {
-        border: solid yellow;
+        border: solid #ffdb7a;
         background: $panel;
     }
 
     NoteEditPanel TextArea {
         height: 1fr;
-        min-height: 15;
-        border: solid cyan;
+        min-height: 12;
+        border: solid #404040;
         background: $surface;
         color: $text;
     }
 
     NoteEditPanel TextArea:focus {
-        border: solid yellow;
+        border: solid #ffdb7a;
         background: $panel;
     }
 
@@ -106,30 +98,26 @@ class NoteEditPanel(VerticalScroll):
         color: $text-muted;
         width: 100%;
         height: auto;
-        padding: 0 0 1 15;
-        text-style: italic;
-        font-size: 0.9;
+        padding: 0 0 0 11;
     }
 
     NoteEditPanel Static.hint-main {
         color: $text-muted;
         width: 100%;
         text-align: center;
-        padding: 1 0 0 0;
-        text-style: italic;
+        padding: 0;
     }
 
     NoteEditPanel Static.dirty-indicator {
-        color: yellow;
+        color: #ffdb7a;
         width: 100%;
         text-align: center;
-        padding: 0 0 1 0;
+        padding: 0;
     }
 
     NoteEditPanel Static.section-label {
         color: cyan;
-        text-style: bold;
-        padding: 1 0 0 0;
+        padding: 0;
     }
     """
 
@@ -162,11 +150,14 @@ class NoteEditPanel(VerticalScroll):
         self._is_new = is_new
         self._original_values = {}  # For dirty tracking
 
+        # Set border title
+        if is_new:
+            self.border_title = "Create New Note"
+        else:
+            self.border_title = "Edit Note"
+
     def compose(self) -> ComposeResult:
         """Compose the edit form"""
-        title = "Create New Note" if self._is_new else f"Edit Note"
-
-        yield Static(title, classes="title")
         yield Static("", id="error_message", classes="error")
         yield Static("", id="dirty_indicator", classes="dirty-indicator")
 
@@ -188,10 +179,9 @@ class NoteEditPanel(VerticalScroll):
                 placeholder="tag1, tag2, tag3",
                 id="tags_input"
             )
-        yield Static("Comma-separated tags", classes="hint")
 
         # Body field (markdown)
-        yield Static("Body (Markdown):", classes="section-label")
+        yield Static("Body:", classes="section-label")
 
         if TextArea is None:
             # Fallback to Input for older Textual versions
@@ -209,12 +199,6 @@ class NoteEditPanel(VerticalScroll):
                 except Exception:
                     pass
             yield body_widget
-
-        # Action hints
-        yield Static(
-            "[dim]Ctrl+S to save | Esc to cancel | AI chat available on the right →[/dim]",
-            classes="hint-main"
-        )
 
     def on_mount(self) -> None:
         """Focus title input and capture original values"""
@@ -352,8 +336,11 @@ class NoteEditPanel(VerticalScroll):
         if hasattr(self.app, 'refresh_note_table'):
             self.app.refresh_note_table()
 
+    @work(exclusive=True)
     async def action_cancel(self) -> None:
         """Cancel editing with dirty check (Esc)"""
+        from core.state import LeftPanelMode
+
         # Check if dirty
         if self.is_dirty:
             from textual_widgets.confirm_dialog import ConfirmDialog
@@ -366,8 +353,6 @@ class NoteEditPanel(VerticalScroll):
                 return
 
         # Return to previous state
-        from core.state import LeftPanelMode
-
         if self._is_new:
             # Creating new note - return to list
             self.app.state.left_panel_mode = LeftPanelMode.LIST_NOTES
