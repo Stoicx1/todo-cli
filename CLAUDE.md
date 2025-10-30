@@ -460,20 +460,27 @@ python main.py --version    # CLI
    - Update `VERSION` file
    - Update `CHANGELOG.md` (move "Unreleased" → new version with date)
    - Commit: `chore(release): vX.Y.Z`
-   - Create tag: `git tag -a vX.Y.Z -m "vX.Y.Z"` (MUST create before pushing!)
-   - Push: `git push origin <branch>` then `git push origin vX.Y.Z`
+   - **REQUIRED: Push commit AND create tag (3-step process):**
+     1. `git push origin <branch>` - Push commit first
+     2. `git tag -a vX.Y.Z -m "vX.Y.Z"` - Create tag locally
+     3. `git push origin vX.Y.Z` - Push tag immediately
 
-**Tag Creation Order (CRITICAL):**
+**Tag Creation Order (CRITICAL - ALWAYS Required After Version Bump):**
 ```bash
-# 1. Create tag locally FIRST
-git tag -a v0.2.0 -m "v0.2.0"
-
-# 2. Push commit
+# 1. Push commit FIRST
 git push origin <branch>
 
-# 3. Push tag
-git push origin v0.2.0
+# 2. Create tag locally
+git tag -a v0.2.2 -m "v0.2.2"
+
+# 3. Push tag immediately
+git push origin v0.2.2
 ```
+
+**Why this order:**
+- Ensures commit exists on remote before tagging
+- Tag points to already-published commit
+- Clean, predictable workflow
 
 **Common Error:** Trying to push a tag that doesn't exist locally:
 ```
