@@ -78,7 +78,7 @@ DataTable:focus > .datatable--cursor { background: $accent 30%; color: #000000; 
 DataTable > .datatable--odd-row { background: $surface; }
 DataTable > .datatable--even-row { background: $panel; }
 
-StatusBar { height: 4; border: solid #404040; background: #3a3a3a; padding: 0 2; text-align: left; color: #ffffff; }
+StatusBar { height: 6; border: solid #404040; background: #3a3a3a; padding: 0 2; text-align: left; color: #ffffff; }
 
 Footer { background: $primary; color: $text; }
 
@@ -145,7 +145,7 @@ DataTable:focus > .datatable--cursor { background: $secondary 20%; color: $text;
 DataTable > .datatable--odd-row { background: $surface; }
 DataTable > .datatable--even-row { background: $panel; }
 
-StatusBar { height: 4; border: solid $secondary; background: $panel; padding: 0 2; text-align: left; color: $text; }
+StatusBar { height: 6; border: solid $secondary; background: $panel; padding: 0 2; text-align: left; color: $text; }
 
 Footer { background: $primary; color: $text; }
 
@@ -692,6 +692,39 @@ class TodoTextualApp(App):
             # Widget update failed - log but don't crash
             self.log.error(f"Failed to refresh widgets: {e}", exc_info=True)
             debug_log.error(f"Widget refresh failed: {e}", exception=e)
+
+    def refresh_note_table(self) -> None:
+        """
+        Refresh note table with current state
+        Called whenever notes change or mode switches to notes
+
+        This method:
+        1. Refreshes notes from disk
+        2. Updates NoteTable widget with current notes
+        3. Updates status bar
+        """
+        debug_log.info(f"[APP] refresh_note_table() called - {len(self.state.notes)} notes in state")
+
+        # Refresh notes from disk first
+        self.state.refresh_notes_from_disk()
+
+        # Query NoteTable dynamically
+        from textual_widgets.note_table import NoteTable
+        note_tables = self.query(NoteTable)
+        if note_tables:
+            note_table = note_tables.first()
+            notes = list(self.state.notes)
+            debug_log.debug(f"[APP] Updating NoteTable with {len(notes)} notes")
+            note_table.update_with_notes(notes)
+            note_table.display = True
+            debug_log.debug("[APP] NoteTable updated successfully")
+        else:
+            debug_log.debug("NoteTable not found (may not be mounted yet)")
+
+        # Update status bar
+        if self._status_bar:
+            self._status_bar.update_from_state(self.state)
+            debug_log.debug(f"[APP] Status bar updated successfully")
 
     # ========================================================================
     # MESSAGE HANDLERS

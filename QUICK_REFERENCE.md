@@ -1,4 +1,4 @@
-# ⚡ Todo CLI - Quick Reference Guide
+﻿# ⚡ Todo CLI - Quick Reference Guide
 
 **Updated:** 2025-10-23 (October 2025 Update)
 
@@ -326,11 +326,7 @@ The `add` and `edit` commands automatically adapt based on your current mode:
 
 **Need help?** Type `/` to see all available commands!
 
-## Age
-- Sort: sort age [asc|desc] (asc=youngest first)
-- Filter: ge>=3d, ge<=2h, ge>=30m`n- Column: ID | Age | Priority | Tags | Task
-
----
+## Age\r\n- Sort: `sort age [asc|desc]` (asc = youngest first)\r\n- Filter: `filter age>=3d`, `filter age<=2h`, `filter age>=30m`\r\n- Column: `ID | Age | Priority | Tags | Task`\r\n\r\n---
 
 ## Notes (Offline)
 Commands
@@ -348,7 +344,7 @@ note duplicate <note_id> [--title "..."] [--task 12]
 
 Shortcuts
 - Textual: m toggle mode, Enter open, Ctrl+E edit, Shift+N quick, Ctrl+N new, Ctrl+L link, Ctrl+U unlink, Ctrl+D duplicate, Delete remove
-- Rich: Ctrl+N new (selected task), Ctrl+O open latest (selected task)
+ 
 
 ---
 

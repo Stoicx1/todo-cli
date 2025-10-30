@@ -78,6 +78,33 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Documentation: `THEME_LAYOUT_FIX.md`, `PERFORMANCE_ANALYSIS.md`, `PERFORMANCE_OPTIMIZATIONS.md`
 - Screenshot files and `styles/archive/` directory
 
+## [0.2.1] - 2025-10-30
+
+### Fixed
+- **Command Aliases** - Removed conflicting single-letter aliases
+  - Removed `d` alias for `done` (conflicts with `d` key binding for delete)
+  - Removed `r` alias for `remove` (reserved for refresh key binding)
+  - Destructive actions now require full word commands only
+
+- **StatusBar Height** - Fixed rendering with proper height calculation
+  - Updated from height: 4 to height: 6 in both themes
+  - Ensures 2-line status display without clipping
+
+- **Footer Encoding** - Fixed bullet character display
+  - Corrected corrupted encoding (â€¢ → •)
+  - Proper Unicode rendering with ASCII fallback
+
+### Changed
+- **Documentation** - Deprecated Rich UI across all docs
+  - Updated readme.md, USAGE_GUIDE.md, QUICK_REFERENCE.md
+  - Added deprecation notices in MIGRATION_GUIDE.md
+  - Simplified TEXTUAL_QUICKSTART.md to Textual-only
+  - Removed `--ui rich` examples and references
+
+### Added
+- **tests/test_alias_guardrails.py** - Prevents single-letter destructive aliases
+- **textual_app.py** - Added `refresh_note_table()` method for better note sync
+
 ## [0.2.0] - 2025-10-27
 
 ### Added

@@ -18,12 +18,10 @@ def _maybe_handle_version_flag(argv: list[str]) -> bool:
 def main():
     """
     Main entry point
-    Supports dual UI: Textual (modern, default) or Rich (classic, fallback)
+    Textual UI only.
 
     Usage:
-        python main.py              # Default: Textual UI (modern reactive TUI)
-        python main.py --ui textual # Textual UI (modern)
-        python main.py --ui rich    # Rich UI (classic REPL)
+        python main.py              # Textual UI (modern reactive TUI)
     """
     from debug_logger import debug_log
     debug_log.info("=" * 80)

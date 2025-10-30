@@ -1,6 +1,6 @@
-# 📖 Todo CLI - Complete Usage Guide
+﻿# 📖 Todo CLI - Complete Usage Guide
 
-## 🎯 Command Palette with Dropdown Filtering
+## Command Input with Suggestions
 
 ### Version
 Show current app version from the CLI:
@@ -13,13 +13,13 @@ The Textual UI header also appends the version to the title (e.g., `Todo CLI (Te
 
 ### How It Works
 
-The command palette uses **prompt_toolkit's completion system** to show a dropdown list of all available commands with real-time filtering.
+The command input uses Textual's inline suggestion system (Suggester) to offer real-time completions as you type.
 
 ### Usage
 
-#### 1. **Type `/` to see all commands**
+#### 1. **Typeto see all commands**
 
-When you type `/`, a dropdown appears showing ALL available commands organized by category:
+When you type `/`, the command input activates and shows suggestions grouped by category:
 
 ```
 📊 Tasks: 31 | ✅ Done: 15 | ⏳ Todo: 16 | ... (Status Line)
@@ -42,7 +42,7 @@ When you type `/`, a dropdown appears showing ALL available commands organized b
 - **Arrow keys** (↑↓) navigate through the list
 - **Enter** or **Tab** selects the command
 
-#### 2. **Type `/` + text to filter commands**
+#### 2. **Type+ text to filter commands**
 
 As you continue typing after `/`, the list filters to show only matching commands:
 
@@ -66,7 +66,7 @@ Examples:
 
 #### 3. **Type commands directly (without `/`)**
 
-You can also start typing command names directly, and the completer will show suggestions:
+You can also start typing command names directly, and suggestions will appear inline:
 
 ```
 ❯ Type / for commands › add
@@ -79,9 +79,8 @@ You can also start typing command names directly, and the completer will show su
 
 | Key | Action |
 |-----|--------|
-| `/` | Show all commands in dropdown |
-| `↑` / `↓` | Navigate through dropdown |
-| `Tab` | Auto-complete / Select |
+|| Activate command input |
+| `Tab` | Accept suggestion |\r\n| `Up`/`Down` | Command history |
 | `Enter` | Execute selected command |
 | `Esc` | Clear input buffer (clears what you typed) |
 | `Ctrl+C` | Exit application |
@@ -354,7 +353,7 @@ Your view and sorting preferences persist between runs.
 
 ### Fuzzy Search
 
-The command completer uses **fuzzy matching**:
+Suggestions support fuzzy matching:
 - `/ed` matches "edit"
 - `/rmv` matches "remove"
 - `/ftag` matches "filter tag:"
@@ -416,20 +415,11 @@ All commands now provide helpful error messages when used incorrectly:
 
 ## 🐛 Troubleshooting
 
-### Dropdown not appearing?
+### Command input not focusing?\r\n\r\nPressto focus the command input\r\n\r\n### Commands not filtering?
 
-**Cause**: Terminal compatibility issue
+**Cause**: Not typingfirst
 
-**Solution**:
-- Make sure you're running in a proper terminal (cmd.exe, Windows Terminal, PowerShell)
-- Not in Claude Code's embedded terminal
-- Check that prompt-toolkit is installed: `pip install prompt-toolkit`
-
-### Commands not filtering?
-
-**Cause**: Not typing `/` first
-
-**Solution**: Always start with `/` to activate the dropdown
+**Solution**: Pressto focus the command input
 
 ### Status line not showing?
 
@@ -437,11 +427,11 @@ All commands now provide helpful error messages when used incorrectly:
 
 **Solution**: Run `exit` and restart the app
 
-### Completions showing wrong commands?
+### Suggestions showing wrong commands?
 
-**Cause**: Completer caching issue
+**Cause**: Suggestions cache is stale
 
-**Solution**: Restart the app (completer refreshes on startup)
+**Solution**: Restart the app (suggestions refresh on startup)
 
 ---
 
@@ -453,11 +443,13 @@ All commands now provide helpful error messages when used incorrectly:
 
 ---
 
-**Need help?** Type `help` in the app or `/` to browse all available commands!
+**Need help?** Type `help` in the app orto browse all available commands!
 
 ## Age Support (Oct 2025)
-- Column layout: ID | Age | Prio | Tags | Task
-- Sort: sort age [asc|desc] (asc=youngest first)
+- Column layout: `ID | Age | Prio | Tags | Task`
+- Sort: `sort age [asc|desc]` (asc = youngest first)
+- Filter: `filter age>=3d`, `filter age<=2h`, `filter age>=30m`
+- Age is derived from `created_at` and cannot be set directly
 - Filter: ilter age>=3d, ilter age<=2h, ilter age>=30m`n- Age is derived from created_at and cannot be set directly
  
 ---
@@ -512,6 +504,4 @@ note delete <note_id_prefix>   # Delete notes by id prefix
 note duplicate <note_id_prefix> [--title '...'] [--task 12]
 ```
 
-Shortcuts (Rich CLI)
-- Ctrl+N: Create a new note linked to selected task (after `show <id>`)
-- Ctrl+O: Open latest note for selected task (creates one if none)
+ 

@@ -464,7 +464,7 @@ Check Textual's changelog for CSS caching improvements:
 
 ## Resolved Issues (October 2025)
 
-The following issues were fixed in a comprehensive debugging session. See `BUGFIX_COMPREHENSIVE_TEXTUAL_2025.md` for complete technical details.
+The following issues were fixed in a comprehensive debugging session. See `docs/history/BUGFIX_COMPREHENSIVE_TEXTUAL_2025.md` for complete technical details.
 
 ### ✅ Command Prompt Not Working
 

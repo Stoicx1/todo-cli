@@ -89,10 +89,7 @@ python main.py
 python main.py --ui textual
 ```
 
-**Use Rich UI (fallback):**
-```bash
-python main.py --ui rich
-```
+> Note: Rich UI is deprecated and no longer supported. The Textual UI is the default and only supported interface.
 
 ### Interface Layout
 
@@ -346,7 +343,7 @@ pip install -r requirements.txt
    ```powershell
    [System.Console]::OutputEncoding = [System.Text.Encoding]::UTF8
    ```
-4. If issues persist, use Rich UI: `python main.py --ui rich`
+4. If issues persist, restart the Textual UI and consult logs.
 
 ## Performance Tips
 
@@ -470,9 +467,7 @@ python main.py --ui textual
 ```
 
 **Terminal 2 (Rich):**
-```bash
-python main.py --ui rich
-```
+Textual UI runs by default: `python main.py`
 
 **Both UIs:**
 - Read/write same `tasks.json` file
@@ -508,7 +503,7 @@ insights
 ### Common Questions
 
 **Q: Will Rich UI be removed?**
-A: No! Rich UI remains fully supported. Textual is just the new default.
+A: Yes. Rich UI is deprecated and not supported going forward. The application is Textual-only.
 
 **Q: Do I need to migrate my tasks?**
 A: No. Both UIs use the same `tasks.json` file. Zero migration needed.

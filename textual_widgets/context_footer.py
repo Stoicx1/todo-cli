@@ -52,7 +52,7 @@ class ContextFooter(Static):
         focus_id = self._logical_focus_id(focused)
 
         unicode_ok = bool(USE_UNICODE and not IS_WINDOWS)
-        bullet = " â€¢ " if unicode_ok else " | "
+        bullet = " • " if unicode_ok else " | "
 
         # Line 1: global/navigation
         line1 = bullet.join(["m:mode", "v:view", "n/p", "Ctrl+/:toggle", "/:cmd", "?:ai", "q:quit"])

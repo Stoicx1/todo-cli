@@ -1,6 +1,6 @@
 # 📋 Todo CLI - Interactive Task Manager
 
-A modern, feature-rich command-line task manager with dual UI support: **Textual** (modern reactive TUI with AI chat) and **Rich** (classic REPL interface).
+A modern, feature-rich command-line task manager with a modern **Textual** reactive TUI with AI chat.
 
 ## ✨ Features
 
@@ -18,12 +18,7 @@ A modern, feature-rich command-line task manager with dual UI support: **Textual
 - Robust error handling with graceful degradation 🆕
 - Command input visible by default (no more confusion!) 🆕
 
-**Rich UI (Classic)** - Traditional REPL interface:
-- Available with `--ui rich` flag
-- Simpler, SSH-friendly interface
-- One-time AI answer panels
-- Same task management features
-- Backward compatible with existing workflows
+> Note: The legacy Rich UI is deprecated; Textual is the only supported UI.
 
 ### 🎯 Interactive Command Palette
 - Type `/` to open an interactive menu of all available commands
@@ -66,17 +61,19 @@ python main.py
 
 # Or explicitly choose UI framework
 python main.py --ui textual  # Modern UI with AI chat
-python main.py --ui rich     # Classic REPL UI
+# (Rich UI deprecated; Textual runs by default)
 ```
 
 ### Version
-- Show CLI version: python main.py --version or python main.py -v
-- The Textual UI header shows the current version appended to the title (e.g., Todo CLI (Textual) � v0.1.0).
-- Version policy and release flow: see VERSION.md.
-- Tracked in files: VERSION (single source of truth), CHANGELOG.md.### Requirements
+- Show CLI version: `python main.py --version` or `python main.py -v`
+- The Textual UI header shows the current version appended to the title (e.g., `Todo CLI (Textual) • v0.1.0`).
+- Version policy and release flow: see `VERSION.md`.
+- Tracked in files: `VERSION` (single source of truth), `CHANGELOG.md`.
+
+### Requirements
 - Python 3.8+
 - Dependencies listed in `requirements.txt`
-- For AI features: OpenAI API key in `.env` file (optional - local insights work without it!)
+- For AI features: OpenAI API key in `.env` file (optional — local insights work without it!)
 
 ### Quick Start
 
@@ -87,20 +84,12 @@ python main.py --ui rich     # Classic REPL UI
 4. Press `i` for local insights (no API needed)
 5. See footer for keyboard shortcuts
 
-**Rich UI (Classic):**
-1. Run `python main.py --ui rich`
-2. Type `/` to open command palette
-3. Type `?` for one-time AI answers
-4. Type `help` for command list
+**Rich UI (Deprecated):** No longer supported. Use the Textual UI.
 
 ## 📖 Usage Guide
 
 ### Opening the Command Palette
-Simply type `/` at the prompt to see all available commands:
-
-```
-❯ Sort: priority (ASC) | Page: 1 | View: compact › /
-```
+Simply type `/` at the prompt to see all available commands.
 
 This will show an interactive menu with categories:
 - 📝 Task Management
@@ -419,13 +408,13 @@ The Textual UI provides a **dual-mode interface** for managing both tasks and no
 6. **Keyboard First** - Check footer for all keyboard shortcuts
 7. **Split Screen** - View tasks and AI chat simultaneously
 
-### Rich UI (Classic)
+### Rich UI (Deprecated)
 1. **Use `/` for discovery** - If you forget a command, just type `/`
 2. **Clear with ESC** - Press ESC to clear current input instantly
 3. **Quick refresh** - Type `cls` or `c` to clear and refresh the screen
 4. **Auto-completion** - Press `Tab` while typing commands
 
-### Both UIs
+### Both UIs (Historical)
 1. **Filter by tag** - Organize work by project: `filter tag:project-name`
 2. **Advanced filters** - Use operators: `f priority=1 status=undone`
 3. **Command shortcuts** - Use single letters: `a` (add - mode-aware), `e` (edit - mode-aware), `x` (done)
@@ -456,7 +445,7 @@ Notes:
 **Textual UI not starting:**
 - Run: `pip install textual`
 - Or reinstall: `pip install -r requirements.txt`
-- Fallback: Use Rich UI with `python main.py --ui rich`
+- Fallback: Rich UI has been removed; use the Textual UI.
 
 **AI chat not working:**
 - Check `.env` file has `OPENAI_API_KEY=your_key_here`
@@ -482,7 +471,7 @@ Notes:
 ### General Issues
 
 **Command not found:**
-- Type `/` to see all available commands (Rich UI)
+- Type `/` to see all available commands (Textual command input)
 - Type `help` for the full command list
 - Use `Tab` for auto-completion
 
@@ -497,7 +486,7 @@ Notes:
 
 **Performance issues:**
 - Textual UI: Handles 1000+ tasks smoothly
-- Rich UI: Use `filter` to reduce visible tasks
+- Use `filter` to reduce visible tasks
 - Clear old AI conversations: `Ctrl+Shift+C` (Textual) or delete `~/.todo_cli_ai_history.json`
 
 ## 🤝 Contributing
@@ -536,7 +525,7 @@ This is a personal project, but suggestions and improvements are welcome!
 - ✅ **NEW**: AI input validation (5000 char limit, control character sanitization)
 - ✅ **NEW**: Command aliases consolidation (single source of truth)
 - ✅ **NEW**: Textual console integration (cleaner architecture)
-- 📄 **See:** `BUGFIX_COMPREHENSIVE_TEXTUAL_2025.md` for complete technical details
+- 📄 **See:** `docs/history/BUGFIX_COMPREHENSIVE_TEXTUAL_2025.md` for complete technical details
 
 **v2.0.0 - Textual UI Launch:**
 - ✅ Textual UI as default with AI chat sidebar
@@ -546,7 +535,7 @@ This is a personal project, but suggestions and improvements are welcome!
 - ✅ Keyboard shortcuts: `?`, `Ctrl+A`, `Ctrl+Shift+C`, `i`
 - ✅ Zero flicker, 10x faster rendering (5ms vs 58ms)
 - ✅ Perfect Windows compatibility
-- ✅ Dual UI support: `--ui textual` or `--ui rich`
+- ✅ Textual UI is the supported interface (Rich deprecated)
 - ✅ Advanced filtering with operators (`=`, `!=`, `>=`, `<=`)
 - ✅ Command shortcuts (single-letter aliases: `a`, `e`, `x`/`d`, `u`, `r`, `q`)
 - ✅ Professional bordered status panel
@@ -566,7 +555,9 @@ This is a personal project, but suggestions and improvements are welcome!
 - `docs/README.md` - Documentation structure and organization 🆕 
 
 ## Age Column and Dates (Oct 2025)
-- Tables show: ID | Age | Prio | Tags | Task
-- Age is derived from created_at (compact: 5m, 3h, 2d, 1y)
-- Sort by age: sort age [asc|desc] (asc=youngest first)
+- Tables show: `ID | Age | Prio | Tags | Task`
+- Age is derived from `created_at` (compact: `5m`, `3h`, `2d`, `1y`)
+- Sort by age: `sort age [asc|desc]` (asc = youngest first)
+- Filter by age: `filter age>=3d`, `filter age<=2h`, `filter age>=30m`
+- Detail views show Created, Updated, and Completed (relative)
 - Filter by age: ilter age>=3d, ilter age<=2h, ilter age>=30m`n- Detail views show Created, Updated, and Completed (relative)

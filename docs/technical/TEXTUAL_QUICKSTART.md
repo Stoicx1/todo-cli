@@ -9,16 +9,8 @@ pip install -r requirements.txt
 
 ## Running the App
 
-### Option 1: Classic Rich UI (Default)
 ```bash
 python main.py
-# or
-python main.py --ui rich
-```
-
-### Option 2: Modern Textual UI
-```bash
-python main.py --ui textual
 ```
 
 ---
@@ -174,7 +166,7 @@ Comprehensive debugging session fixed **10 critical issues**:
 - 1 performance optimization (filter caching)
 - 2 code quality enhancements
 
-**See:** `BUGFIX_COMPREHENSIVE_TEXTUAL_2025.md` for complete technical details
+**See:** `docs/history/BUGFIX_COMPREHENSIVE_TEXTUAL_2025.md` for complete technical details
 
 ---
 

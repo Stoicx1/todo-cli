@@ -31,7 +31,6 @@ COMMAND_ALIASES = {
     'a': 'add',
     'e': 'edit',
     'x': 'done',       # x = done (not exit, use 'q' for quit)
-    'd': 'done',       # d = done (alternative to 'x')
     'u': 'undone',
     'n': 'next',
     'p': 'prev',
@@ -43,7 +42,6 @@ COMMAND_ALIASES = {
     'q': 'exit',       # q = quit/exit
 
     # Additional shortcuts
-    'r': 'remove',
     'so': 'sort',
 
     # Word aliases

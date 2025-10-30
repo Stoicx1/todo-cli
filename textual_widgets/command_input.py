@@ -29,8 +29,6 @@ class CommandSuggester(Suggester):
         "e": "Shortcut: edit (mode-aware)",
         "x": "Shortcut for done",
         "u": "Shortcut for undone",
-        "d": "Shortcut for done",
-        "r": "Shortcut for remove",
         "s": "Shortcut for show",
 
         # Filtering & Sorting
