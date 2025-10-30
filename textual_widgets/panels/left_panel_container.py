@@ -13,6 +13,7 @@ Uses reactive attributes for automatic UI updates when mode changes.
 """
 
 from textual.app import ComposeResult
+from contextlib import nullcontext
 from textual.containers import Container
 from textual.reactive import reactive
 from textual.widget import Widget
@@ -117,29 +118,28 @@ class LeftPanelContainer(Container):
         debug_log.debug(f"[LEFT_PANEL] Current panel: {type(self._current_panel).__name__ if self._current_panel else 'None'}")
         debug_log.debug(f"[LEFT_PANEL] Container children count: {len(list(self.children))}")
 
-        # Remove current panel
-        self._clear_current_panel()
+        # Batch DOM changes to minimize layout thrash
+        batch_ctx = getattr(self.app, "batch_update", None)
+        ctx = batch_ctx() if callable(batch_ctx) else nullcontext()
+        with ctx:
+            # Remove current panel
+            self._clear_current_panel()
 
-        # Mount appropriate panel based on mode
-        debug_log.debug(f"[LEFT_PANEL] Mounting panel for mode: {mode}")
+            # Mount appropriate panel based on mode
+            debug_log.debug(f"[LEFT_PANEL] Mounting panel for mode: {mode}")
 
-        if mode == LeftPanelMode.LIST_TASKS:
-            self._mount_task_list()
-
-        elif mode == LeftPanelMode.DETAIL_TASK:
-            self._mount_task_detail()
-
-        elif mode == LeftPanelMode.EDIT_TASK:
-            self._mount_task_edit()
-
-        elif mode == LeftPanelMode.LIST_NOTES:
-            self._mount_note_list()
-
-        elif mode == LeftPanelMode.DETAIL_NOTE:
-            self._mount_note_detail()
-
-        elif mode == LeftPanelMode.EDIT_NOTE:
-            self._mount_note_edit()
+            if mode == LeftPanelMode.LIST_TASKS:
+                self._mount_task_list()
+            elif mode == LeftPanelMode.DETAIL_TASK:
+                self._mount_task_detail()
+            elif mode == LeftPanelMode.EDIT_TASK:
+                self._mount_task_edit()
+            elif mode == LeftPanelMode.LIST_NOTES:
+                self._mount_note_list()
+            elif mode == LeftPanelMode.DETAIL_NOTE:
+                self._mount_note_detail()
+            elif mode == LeftPanelMode.EDIT_NOTE:
+                self._mount_note_edit()
 
         elapsed = (time.time() - start_time) * 1000
         debug_log.info(f"[LEFT_PANEL] Mode switch completed in {elapsed:.2f}ms")

@@ -236,6 +236,125 @@ class TaskEditPanel(VerticalScroll):
         """Focus name input and capture original values"""
         self.query_one("#name_input", Input).focus()
         self._capture_original_values()
+        # Periodically refresh from state if external changes occurred and panel isn't dirty
+        try:
+            self.set_interval(0.5, self._maybe_refresh_from_state)
+        except Exception:
+            pass
+
+    def _maybe_refresh_from_state(self) -> None:
+        """If the underlying task changed externally and we have no local edits, refresh fields."""
+        try:
+            from debug_logger import debug_log
+        except Exception:
+            debug_log = None
+
+        # Skip if new task or panel has local edits
+        try:
+            if getattr(self, "_is_new", False):
+                return
+            if self.is_dirty:
+                if debug_log:
+                    debug_log.debug("[TASK_EDIT] Auto-refresh skipped: panel is dirty")
+                return
+        except Exception:
+            return
+
+        try:
+            task_id = getattr(self._task_data, "id", None) if hasattr(self, "_task_data") else None
+            if task_id is None:
+                return
+            state = getattr(self.app, "state", None)
+            if not state:
+                return
+            # Get latest task from state
+            latest = state.get_task_by_id(task_id)
+            if latest is None:
+                return
+
+            # Prefer updated_at comparison, but if it's the same object (in-place edits),
+            # fall back to comparing current form fields with latest state values.
+            current_updated = getattr(self._task_data, "updated_at", "") if self._task_data else ""
+            latest_updated = getattr(latest, "updated_at", "")
+
+            # Build current form snapshot
+            try:
+                from textual.widgets import Select as _Select
+                form_snapshot = {
+                    "name": self.query_one("#name_input", Input).value,
+                    "comment": self.query_one("#comment_input", Input).value,
+                    "description": self.query_one("#description_input", Input).value,
+                    "priority": str(self.query_one("#priority_select", _Select).value),
+                    "tags": self.query_one("#tags_input", Input).value,
+                }
+            except Exception:
+                form_snapshot = {}
+
+            latest_snapshot = {
+                "name": getattr(latest, "name", "") or "",
+                "comment": getattr(latest, "comment", "") or "",
+                "description": getattr(latest, "description", "") or "",
+                "priority": str(getattr(latest, "priority", 2)),
+                "tags": ", ".join(getattr(latest, "tags", []) or []),
+            }
+
+            has_external_change = False
+            if latest_updated and latest_updated != (current_updated or ""):
+                has_external_change = True
+            else:
+                # Same object or timestamp unchanged; detect divergence from form values
+                try:
+                    has_external_change = bool(form_snapshot) and any(
+                        form_snapshot[k] != latest_snapshot.get(k, "") for k in latest_snapshot
+                    )
+                except Exception:
+                    has_external_change = False
+
+            if has_external_change:
+                if debug_log:
+                    debug_log.info(f"[TASK_EDIT] Detected external change for task #{task_id} -> refreshing fields")
+
+                # Update inputs
+                try:
+                    from textual.widgets import Select  # local import for safety
+                    self.query_one("#name_input", Input).value = latest.name or ""
+                    self.query_one("#comment_input", Input).value = latest.comment or ""
+                    self.query_one("#description_input", Input).value = latest.description or ""
+                    self.query_one("#priority_select", Select).value = str(getattr(latest, "priority", 2))
+                    self.query_one("#tags_input", Input).value = ", ".join(getattr(latest, "tags", []) or [])
+                except Exception:
+                    pass
+
+                # Sync local model snapshot
+                if self._task_data:
+                    try:
+                        self._task_data.name = latest.name
+                        self._task_data.comment = latest.comment
+                        self._task_data.description = latest.description
+                        self._task_data.priority = latest.priority
+                        self._task_data.tags = list(getattr(latest, "tags", []) or [])
+                        self._task_data.tag = (self._task_data.tags[0] if self._task_data.tags else "")
+                        self._task_data.updated_at = latest_updated
+                    except Exception:
+                        pass
+
+                # Reset originals so dirty stays false after refresh
+                try:
+                    self._capture_original_values()
+                except Exception:
+                    pass
+
+                # Notify user
+                try:
+                    self.app.notify("Task updated externally; editor refreshed", severity="information")
+                except Exception:
+                    pass
+            else:
+                if debug_log:
+                    debug_log.debug("[TASK_EDIT] Auto-refresh: no external changes detected")
+        except Exception:
+            # Defensive: never raise from timer
+            pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses"""
@@ -391,7 +510,7 @@ class TaskEditPanel(VerticalScroll):
             debug_log.info(f"[TASK_EDIT] -> Switched to LIST_TASKS (state+app). container_current_mode={current_mode}")
         except Exception:
             debug_log.info("[TASK_EDIT] -> Switched to LIST_TASKS (state+app)")
-        self.app.refresh_table()
+        # Panel refresh not needed; watcher will update table
 
         # Save to file
         self.app.state.save_to_file(self.app.tasks_file, self.app.console)
@@ -431,9 +550,7 @@ class TaskEditPanel(VerticalScroll):
                 pass
             debug_log.info("[TASK_EDIT] -> Cancel (edit): DETAIL_TASK (state+app)")
 
-        # Refresh table to show current state
-        if hasattr(self.app, 'refresh_table'):
-            self.app.refresh_table()
+        # Refresh handled by app watcher
 
     def on_key(self, event) -> None:
         """Intercept Esc to prevent bubbling to next view after mode switch."""

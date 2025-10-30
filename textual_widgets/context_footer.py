@@ -19,11 +19,6 @@ class ContextFooter(Static):
 
     def on_mount(self) -> None:
         self.update(self._build_text())
-        try:
-            # Periodically refresh to track focus and mode changes
-            self.set_interval(0.25, self.update_from_state)
-        except Exception:
-            pass
 
     def _logical_focus_id(self, focused: Widget | None) -> str:
         if not focused:

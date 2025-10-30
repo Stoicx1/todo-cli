@@ -74,23 +74,8 @@ class StatusBar(Static):
         except Exception:
             pass
 
-        # Append current focus target
-        try:
-            focused = self.app.focused
-            focus_id = getattr(focused, 'id', '') or focused.__class__.__name__
-            # Reduce verbosity for known ids
-            friendly = (
-                'tasks' if focus_id in ('task_table',) else
-                'notes' if focus_id in ('note_table',) else
-                'ai chat' if focus_id in ('ai_chat_panel',) else
-                'ai input' if focus_id in ('ai_input',) else
-                'command' if focus_id in ('command_input',) else
-                focus_id
-            )
-            if friendly:
-                line1 += f"  •  focus: {friendly}"
-        except Exception:
-            pass
+        # Intentionally skip appending focus to avoid frequent, tiny updates
+        # This keeps status stable and reduces redraws during navigation
 
         # Line 2: Task/Notes statistics
         if getattr(state, 'entity_mode', 'tasks') == 'notes':
@@ -112,6 +97,14 @@ class StatusBar(Static):
 
         # Combine lines
         status_markup = f"{line1}\n{line2}"
+
+        # No-op guard: skip update if content is identical
+        try:
+            if getattr(self, "_last_markup", None) == status_markup:
+                return
+            self._last_markup = status_markup
+        except Exception:
+            pass
 
         # Log content details
         debug_log.info(f"[STATUSBAR] Generated content ({len(status_markup)} chars): {status_markup[:150]}...")

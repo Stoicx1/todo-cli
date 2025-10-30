@@ -156,7 +156,7 @@ Button:focus { background: $secondary; color: $background; text-style: bold; }
 Input { border: solid $secondary; background: $surface; color: $text; }
 Input:focus { border: solid $secondary; background: $panel; }
 
-#command_input { height: 3; border: solid #c9a959; background: $panel; dock: bottom; margin: 0 0 1 0; }
+#command_input { height: 6; border: solid #c9a959; background: $panel; dock: bottom; margin: 0 0 1 0; }
 #command_input:focus { border: solid $secondary; background: $surface; }
 
 ModalScreen { background: #64748b 50%; }
@@ -248,6 +248,24 @@ class TodoTextualApp(App):
     filter_text = reactive("none")
     command_mode = reactive(False)  # Toggle command input visibility
     ai_panel_visible = reactive(True)  # AI chat panel visibility
+
+    # --- Navigation helper -------------------------------------------------
+    def navigate(self, mode: LeftPanelMode, *, reason: str = "") -> None:
+        """Set panel mode consistently (state + reactive) and log once.
+
+        Args:
+            mode: Target LeftPanelMode
+            reason: Optional context for debug logs
+        """
+        try:
+            debug_log.info(f"[NAVIGATE] -> {mode} {f'({reason})' if reason else ''}")
+        except Exception:
+            pass
+        try:
+            self.state.left_panel_mode = mode
+        except Exception:
+            pass
+        self.left_panel_mode = mode
     _current_theme: str | None = None
 
     # Available themes (references module-level constants)
@@ -615,9 +633,15 @@ class TodoTextualApp(App):
             self._left_panel_container.current_mode = new_mode
             debug_log.info(f"[APP] LeftPanelContainer synced to mode: {new_mode}")
 
-        # Update status bar if needed
+        # Update status bar/footer if needed
         if self._status_bar:
             self._status_bar.update_from_state(self.state)
+        try:
+            from textual_widgets.context_footer import ContextFooter  # type: ignore
+            footer = self.query_one(ContextFooter)
+            footer.update_from_state()
+        except Exception:
+            pass
 
     def refresh_table(self) -> None:
         """
@@ -641,7 +665,37 @@ class TodoTextualApp(App):
                 task_table = task_tables.first()
                 if self.state.entity_mode == "tasks":
                     task_table.display = True
-                    task_table.update_from_state(self.state)
+                    # Compute a signature to avoid redundant rebuilds.
+                    # Include visible content to catch status/name/priority changes without count changes.
+                    try:
+                        visible = self.state.get_current_page_tasks()
+                        visible_sig = tuple((
+                            int(getattr(t, 'id', 0)),
+                            bool(getattr(t, 'done', False)),
+                            int(getattr(t, 'priority', 2)),
+                            (getattr(t, 'name', '') or '')[:16],
+                            (getattr(t, 'tag', '') or '')[:12],
+                        ) for t in visible)
+                    except Exception:
+                        visible_sig = ()
+                    tasks_sig = (
+                        len(self.state.tasks),
+                        self.state.page,
+                        self.state.view_mode,
+                        self.state.sort,
+                        self.state.sort_order,
+                        visible_sig,
+                    )
+                    force = False
+                    try:
+                        force = (len(task_table.rows) == 0)
+                    except Exception:
+                        force = True
+                    if force or getattr(self, "_last_tasks_sig", None) != tasks_sig:
+                        task_table.update_from_state(self.state)
+                        self._last_tasks_sig = tasks_sig
+                    else:
+                        debug_log.debug("[APP] Task table unchanged; skipped rebuild")
                 else:
                     task_table.display = False
                 debug_log.debug(f"[APP] Task table updated/toggled successfully")
@@ -655,21 +709,19 @@ class TodoTextualApp(App):
                 note_table = note_tables.first()
                 if self.state.entity_mode == "notes":
                     note_table.display = True
-                    # Apply notes filter if present
-                    filter_value = ""
                     notes = list(self.state.notes)
-                    debug_log.debug(f"[APP] Notes in state: {len(notes)}; filter='{filter_value}'")
-                    if filter_value:
-                        q = filter_value.strip().lower()
-                        notes = [
-                            n for n in notes
-                            if q in n.title.lower()
-                            or any(q in t for t in n.tags)
-                            or q in (n.body_md or "").lower()
-                            or n.id.startswith(q)
-                        ]
-                        debug_log.debug(f"[APP] Notes after filter: {len(notes)}")
-                    note_table.update_with_notes(notes)
+                    notes_sig = (len(notes),)
+                    force_notes = False
+                    try:
+                        force_notes = (len(note_table.rows) == 0)
+                    except Exception:
+                        force_notes = True
+                    if force_notes or getattr(self, "_last_notes_sig", None) != notes_sig:
+                        debug_log.debug(f"[APP] Updating NoteTable with {len(notes)} notes")
+                        note_table.update_with_notes(notes)
+                        self._last_notes_sig = notes_sig
+                    else:
+                        debug_log.debug("[APP] Note table unchanged; skipped update")
                 else:
                     note_table.display = False
                 debug_log.debug("[APP] Note table updated/toggled successfully")
@@ -869,8 +921,7 @@ class TodoTextualApp(App):
                 else:
                     self.state.selected_note_id = note_id
                     self.state.edit_mode_is_new = False
-                    self.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
-                    self.left_panel_mode = LeftPanelMode.EDIT_NOTE
+                    self.navigate(LeftPanelMode.EDIT_NOTE, reason="mode command -> edit note")
                     debug_log.info(f"[APP] Switched to EDIT_NOTE mode for note {note_id[:8]}")
                 return
 
@@ -904,12 +955,10 @@ class TodoTextualApp(App):
 
                 # Update panel mode to match
                 if new_mode == "tasks":
-                    self.state.left_panel_mode = LeftPanelMode.LIST_TASKS
-                    self.left_panel_mode = LeftPanelMode.LIST_TASKS
+                    self.navigate(LeftPanelMode.LIST_TASKS, reason="mode command -> list tasks")
                     debug_log.info(f"[APP] Mode command: {old_mode} → TASKS (panel: LIST_TASKS)")
                 elif new_mode == "notes":
-                    self.state.left_panel_mode = LeftPanelMode.LIST_NOTES
-                    self.left_panel_mode = LeftPanelMode.LIST_NOTES
+                    self.navigate(LeftPanelMode.LIST_NOTES, reason="mode command -> list notes")
                     debug_log.info(f"[APP] Mode command: {old_mode} → NOTES (panel: LIST_NOTES)")
 
                 # Refresh tables
@@ -1033,8 +1082,7 @@ class TodoTextualApp(App):
         self.state.selected_task_id = None
 
         # Switch to edit panel
-        self.state.left_panel_mode = LeftPanelMode.EDIT_TASK
-        self.left_panel_mode = LeftPanelMode.EDIT_TASK
+        self.navigate(LeftPanelMode.EDIT_TASK, reason="edit task (create new)")
 
         debug_log.info("[APP] Switched to EDIT_TASK mode (create new)")
 
@@ -1063,8 +1111,7 @@ class TodoTextualApp(App):
         # Switch to edit panel
         self.state.selected_task_id = task_id
         self.state.edit_mode_is_new = False
-        self.state.left_panel_mode = LeftPanelMode.EDIT_TASK
-        self.left_panel_mode = LeftPanelMode.EDIT_TASK
+        self.navigate(LeftPanelMode.EDIT_TASK, reason="edit task")
 
         debug_log.info(f"[APP] Switched to EDIT_TASK mode for task #{task_id}")
 
@@ -1082,8 +1129,7 @@ class TodoTextualApp(App):
 
         # Switch to detail panel
         self.state.selected_task_id = task_id
-        self.state.left_panel_mode = LeftPanelMode.DETAIL_TASK
-        self.left_panel_mode = LeftPanelMode.DETAIL_TASK
+        self.navigate(LeftPanelMode.DETAIL_TASK, reason="open selected task detail")
 
         debug_log.info(f"[APP] Switched to DETAIL_TASK mode for task #{task_id}")
 
@@ -1101,7 +1147,22 @@ class TodoTextualApp(App):
             task = self.state.get_task_by_id(task_id)
             if task:
                 task.done = True
+                try:
+                    from datetime import datetime
+                    task.updated_at = datetime.now().isoformat()
+                except Exception:
+                    pass
+                # Filters like 'done' depend on this; invalidate cache
+                try:
+                    self.state.invalidate_filter_cache()
+                except Exception:
+                    pass
                 self.refresh_table()
+                # Persist change
+                try:
+                    self.state.save_to_file(self.tasks_file, self.console)
+                except Exception:
+                    pass
                 self.notify(f"Task #{task_id} marked as done", severity="information")
         else:
             self.notify("No task selected", severity="warning")
@@ -1120,7 +1181,22 @@ class TodoTextualApp(App):
             task = self.state.get_task_by_id(task_id)
             if task:
                 task.done = False
+                try:
+                    from datetime import datetime
+                    task.updated_at = datetime.now().isoformat()
+                except Exception:
+                    pass
+                # Filters like 'done' depend on this; invalidate cache
+                try:
+                    self.state.invalidate_filter_cache()
+                except Exception:
+                    pass
                 self.refresh_table()
+                # Persist change
+                try:
+                    self.state.save_to_file(self.tasks_file, self.console)
+                except Exception:
+                    pass
                 self.notify(f"Task #{task_id} marked as undone", severity="information")
         else:
             self.notify("No task selected", severity="warning")
@@ -1225,8 +1301,7 @@ class TodoTextualApp(App):
 
             # Switch to note detail panel
             self.state.selected_note_id = note_id
-            self.state.left_panel_mode = LeftPanelMode.DETAIL_NOTE
-            self.left_panel_mode = LeftPanelMode.DETAIL_NOTE
+            self.navigate(LeftPanelMode.DETAIL_NOTE, reason="open selected note detail")
             debug_log.info(f"[APP] Switched to DETAIL_NOTE mode")
             return
 
@@ -1244,8 +1319,7 @@ class TodoTextualApp(App):
 
         # Switch to task detail panel
         self.state.selected_task_id = task_id
-        self.state.left_panel_mode = LeftPanelMode.DETAIL_TASK
-        self.left_panel_mode = LeftPanelMode.DETAIL_TASK
+        self.navigate(LeftPanelMode.DETAIL_TASK, reason="open selected task detail")
         debug_log.info(f"[APP] Switched to DETAIL_TASK mode for task #{task_id}")
 
     def action_refresh(self) -> None:
@@ -1286,8 +1360,7 @@ class TodoTextualApp(App):
             from core.state import LeftPanelMode
             self.state.selected_note_id = note_id
             self.state.edit_mode_is_new = False
-            self.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
-            self.left_panel_mode = LeftPanelMode.EDIT_NOTE
+            self.navigate(LeftPanelMode.EDIT_NOTE, reason="edit selected note")
 
             debug_log.info(f"[APP] Switched to EDIT_NOTE mode for note {note_id[:8]}")
             return
@@ -1323,12 +1396,10 @@ class TodoTextualApp(App):
 
         # Update panel mode to match entity mode
         if self.state.entity_mode == "tasks":
-            self.state.left_panel_mode = LeftPanelMode.LIST_TASKS
-            self.left_panel_mode = LeftPanelMode.LIST_TASKS
+            self.navigate(LeftPanelMode.LIST_TASKS, reason="toggle mode -> tasks")
             debug_log.info("[APP] Mode toggled to TASKS - panel mode updated to LIST_TASKS")
         elif self.state.entity_mode == "notes":
-            self.state.left_panel_mode = LeftPanelMode.LIST_NOTES
-            self.left_panel_mode = LeftPanelMode.LIST_NOTES
+            self.navigate(LeftPanelMode.LIST_NOTES, reason="toggle mode -> notes")
             debug_log.info("[APP] Mode toggled to NOTES - panel mode updated to LIST_NOTES")
 
         # Refresh table data
@@ -1367,8 +1438,7 @@ class TodoTextualApp(App):
         from core.state import LeftPanelMode
         self.state.selected_note_id = note_id
         self.state.edit_mode_is_new = False
-        self.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
-        self.left_panel_mode = LeftPanelMode.EDIT_NOTE
+        self.navigate(LeftPanelMode.EDIT_NOTE, reason="edit note")
 
         debug_log.info(f"[APP] Switched to EDIT_NOTE mode for note {note_id[:8]}")
 
@@ -1446,8 +1516,7 @@ class TodoTextualApp(App):
         # Switch to note detail panel
         from core.state import LeftPanelMode
         self.state.selected_note_id = note_id
-        self.state.left_panel_mode = LeftPanelMode.DETAIL_NOTE
-        self.left_panel_mode = LeftPanelMode.DETAIL_NOTE
+        self.navigate(LeftPanelMode.DETAIL_NOTE, reason="link picker -> detail note")
 
         debug_log.info(f"[APP] Switched to DETAIL_NOTE mode for note {note_id[:8]}")
 
@@ -1459,8 +1528,7 @@ class TodoTextualApp(App):
         self.state.entity_mode = "notes"
         self.state.edit_mode_is_new = True
         self.state.selected_note_id = None  # No existing note
-        self.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
-        self.left_panel_mode = LeftPanelMode.EDIT_NOTE
+        self.navigate(LeftPanelMode.EDIT_NOTE, reason="new note")
 
         debug_log.info("[APP] Switched to EDIT_NOTE mode (create new)")
 
@@ -1547,8 +1615,7 @@ class TodoTextualApp(App):
         self.state.entity_mode = "notes"
         self.state.edit_mode_is_new = True
         self.state.selected_note_id = None
-        self.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
-        self.left_panel_mode = LeftPanelMode.EDIT_NOTE
+        self.navigate(LeftPanelMode.EDIT_NOTE, reason="quick note")
 
         debug_log.info("[APP] Switched to EDIT_NOTE mode (quick note)")
 

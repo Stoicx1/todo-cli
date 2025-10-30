@@ -13,6 +13,7 @@ from textual import work
 
 from models.task import Task
 from config import USE_UNICODE
+from utils.emoji import emoji
 
 
 class TaskDetailPanel(VerticalScroll):
@@ -99,7 +100,7 @@ class TaskDetailPanel(VerticalScroll):
         """Compose the task detail view"""
         # Icons and formatting
         status_icon = ("✔" if USE_UNICODE else "+") if self._task_data.done else ("✗" if USE_UNICODE else "-")
-        divider = ("─" * 60) if USE_UNICODE else ("-" * 60)
+        divider = "─" * 60 if USE_UNICODE else "-" * 60
         tag_icon = "#"
 
         # Status text with color
@@ -174,9 +175,9 @@ class TaskDetailPanel(VerticalScroll):
         # Hint + Buttons
         yield Static("[dim]E to Edit | Esc to go Back | D to Delete[/dim]", classes="hint")
         with Horizontal(classes="buttons"):
-            yield Button("✏️ Edit (E)", variant="primary", id="edit_btn")
-            yield Button("🔙 Back (Esc)", variant="default", id="back_btn")
-            yield Button("🗑️ Delete (D)", variant="error", id="delete_btn")
+            yield Button("Edit (E)", variant="primary", id="edit_btn")
+            yield Button("Back (Esc)", variant="default", id="back_btn")
+            yield Button("Delete (D)", variant="error", id="delete_btn")
 
     def on_mount(self) -> None:
         """Focus the panel on mount"""
@@ -280,7 +281,7 @@ class TaskDetailPanel(VerticalScroll):
             # Return to list
             from core.state import LeftPanelMode
             self.app.state.left_panel_mode = LeftPanelMode.LIST_TASKS
-            self.app.refresh_table()
+            # refresh handled by watcher
             debug_log.info("[TASK_DETAIL] ✅ Returned to task list")
         else:
             debug_log.info("[TASK_DETAIL] ❌ Delete cancelled by user")

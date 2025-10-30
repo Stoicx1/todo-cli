@@ -1,4 +1,4 @@
-"""
+﻿"""
 NoteDetailPanel - View-only note detail panel (replaces NoteDetailModal)
 
 Displays note information in the left panel area without blocking AI chat access.
@@ -111,7 +111,7 @@ class NoteDetailPanel(VerticalScroll):
 
     def compose(self) -> ComposeResult:
         """Compose the note detail view"""
-        divider = ("─" * 60) if USE_UNICODE else ("-" * 60)
+        divider = "─" * 60 if USE_UNICODE else "-" * 60
         tag_icon = "#"
 
         # Tags
@@ -147,16 +147,16 @@ class NoteDetailPanel(VerticalScroll):
         # Hint + Buttons
         yield Static("[dim]E to Edit | Esc to go Back | D to Delete[/dim]", classes="hint")
         with Horizontal(classes="buttons"):
-            yield Button("✏️ Edit (E)", variant="primary", id="edit_btn")
-            yield Button("🔙 Back (Esc)", variant="default", id="back_btn")
-            yield Button("🗑️ Delete (D)", variant="error", id="delete_btn")
+            yield Button("Edit (E)", variant="primary", id="edit_btn")
+            yield Button("Back (Esc)", variant="default", id="back_btn")
+            yield Button("Delete (D)", variant="error", id="delete_btn")
 
     def on_mount(self) -> None:
         """Focus the panel on mount"""
         from debug_logger import debug_log
         from textual.widgets import Button
 
-        debug_log.info(f"[NOTE_DETAIL] 🟢 Panel mounted for note {self._note_data.id[:8]}")
+        debug_log.info(f"[NOTE_DETAIL] ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸Ãƒâ€¦Ã‚Â¸Ãƒâ€šÃ‚Â¢ Panel mounted for note {self._note_data.id[:8]}")
         debug_log.info(f"[NOTE_DETAIL] Focus state: {self.has_focus}")
         debug_log.info(f"[NOTE_DETAIL] Buttons rendered: {len(self.query(Button))}")
         self.focus()
@@ -166,20 +166,20 @@ class NoteDetailPanel(VerticalScroll):
         """Handle button presses"""
         from debug_logger import debug_log
 
-        debug_log.info(f"[NOTE_DETAIL] ✅ Button pressed: {event.button.id}")
+        debug_log.info(f"[NOTE_DETAIL] ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Button pressed: {event.button.id}")
         debug_log.info(f"[NOTE_DETAIL] Panel has focus: {self.has_focus}")
         debug_log.info(f"[NOTE_DETAIL] App focused widget: {self.app.focused}")
 
         if event.button.id == "edit_btn":
-            debug_log.info("[NOTE_DETAIL] → Calling action_edit_note()")
+            debug_log.info("[NOTE_DETAIL] ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Calling action_edit_note()")
             self.action_edit_note()
             event.stop()  # Prevent event bubbling
         elif event.button.id == "back_btn":
-            debug_log.info("[NOTE_DETAIL] → Calling action_back_to_list()")
+            debug_log.info("[NOTE_DETAIL] ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Calling action_back_to_list()")
             self.action_back_to_list()
             event.stop()  # Prevent event bubbling
         elif event.button.id == "delete_btn":
-            debug_log.info("[NOTE_DETAIL] → Calling action_delete_note()")
+            debug_log.info("[NOTE_DETAIL] ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Calling action_delete_note()")
             self.action_delete_note()
             event.stop()  # Prevent event bubbling
 
@@ -188,27 +188,27 @@ class NoteDetailPanel(VerticalScroll):
         from debug_logger import debug_log
         from core.state import LeftPanelMode
 
-        debug_log.info("[NOTE_DETAIL] 🔙 action_back_to_list() called")
+        debug_log.info("[NOTE_DETAIL] ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ action_back_to_list() called")
         self.app.state.left_panel_mode = LeftPanelMode.LIST_NOTES
         try:
             self.app.left_panel_mode = LeftPanelMode.LIST_NOTES
         except Exception:
             pass
-        debug_log.info("[NOTE_DETAIL] ✅ Switched to LIST_NOTES mode")
+        debug_log.info("[NOTE_DETAIL] ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Switched to LIST_NOTES mode")
 
     def action_edit_note(self) -> None:
         """Switch to edit mode (e or i)"""
         from debug_logger import debug_log
         from core.state import LeftPanelMode
 
-        debug_log.info("[NOTE_DETAIL] ✏️ action_edit_note() called")
+        debug_log.info("[NOTE_DETAIL] ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â action_edit_note() called")
         self.app.state.edit_mode_is_new = False
         self.app.state.left_panel_mode = LeftPanelMode.EDIT_NOTE
         try:
             self.app.left_panel_mode = LeftPanelMode.EDIT_NOTE
         except Exception:
             pass
-        debug_log.info("[NOTE_DETAIL] ✅ Switched to EDIT_NOTE mode")
+        debug_log.info("[NOTE_DETAIL] ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Switched to EDIT_NOTE mode")
 
     def on_key(self, event) -> None:
         """Consume Esc to avoid double handling after mode switch."""
@@ -240,7 +240,7 @@ class NoteDetailPanel(VerticalScroll):
         from services.notes import FileNoteRepository
         from config import DEFAULT_NOTES_DIR
 
-        debug_log.info(f"[NOTE_DETAIL] 🗑️ action_delete_note() called for note {self._note_data.id[:8]}")
+        debug_log.info(f"[NOTE_DETAIL] ÃƒÆ’Ã‚Â°Ãƒâ€¦Ã‚Â¸ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬ÂÃƒÂ¢Ã¢â€šÂ¬Ã‹Å“ÃƒÆ’Ã‚Â¯Ãƒâ€šÃ‚Â¸Ãƒâ€šÃ‚Â action_delete_note() called for note {self._note_data.id[:8]}")
 
         # Show confirmation dialog
         title = self._note_data.title or "Untitled"
@@ -256,17 +256,20 @@ class NoteDetailPanel(VerticalScroll):
             # Remove from repository
             repo = FileNoteRepository(DEFAULT_NOTES_DIR)
             repo.delete(self._note_data.id)
+            try:
+                self.app.state.mark_notes_dirty()
+            except Exception:
+                pass
 
             self.app.notify(f"Note deleted: {title}", severity="information")
-            debug_log.info(f"[NOTE_DETAIL] ✅ Note deleted: {title}")
+            debug_log.info(f"[NOTE_DETAIL] ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Note deleted: {title}")
 
             # Return to list
             from core.state import LeftPanelMode
             self.app.state.left_panel_mode = LeftPanelMode.LIST_NOTES
 
-            # Refresh note table
-            if hasattr(self.app, 'refresh_note_table'):
-                self.app.refresh_note_table()
-            debug_log.info("[NOTE_DETAIL] ✅ Returned to note list")
+            # Refresh handled by app watcher
+            debug_log.info("[NOTE_DETAIL] ÃƒÆ’Ã‚Â¢Ãƒâ€¦Ã¢â‚¬Å“ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ Returned to note list")
         else:
-            debug_log.info("[NOTE_DETAIL] ❌ Delete cancelled by user")
+            debug_log.info("[NOTE_DETAIL] ÃƒÆ’Ã‚Â¢Ãƒâ€šÃ‚ÂÃƒâ€¦Ã¢â‚¬â„¢ Delete cancelled by user")
+

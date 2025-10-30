@@ -1,4 +1,4 @@
-"""
+﻿"""
 NoteEditPanel - Inline note editing panel (replaces NoteEditorModal)
 
 Enables creating/editing notes with persistent AI chat access.
@@ -218,26 +218,96 @@ class NoteEditPanel(VerticalScroll):
 
         # Action buttons
         with Horizontal(classes="buttons"):
-            yield Button("💾 Save (Ctrl+S)", variant="primary", id="save_btn")
-            yield Button("❌ Cancel (Esc)", variant="default", id="cancel_btn")
+            yield Button("Cancel (Esc)", variant="default", id="cancel_btn")
 
     def on_mount(self) -> None:
         """Focus title input and capture original values"""
         self.query_one("#title_input", Input).focus()
         self._capture_original_values()
+        # Periodically refresh from state if external changes occurred and panel isn't dirty
+        try:
+            self.set_interval(0.5, self._maybe_refresh_from_state)
+        except Exception:
+            pass
+
+    def _maybe_refresh_from_state(self) -> None:
+        """If the underlying note changed externally and we have no local edits, refresh fields."""
+        try:
+            from debug_logger import debug_log
+        except Exception:
+            debug_log = None
+        try:
+            if self.is_dirty:
+                if debug_log:
+                    debug_log.debug("[NOTE_EDIT] Auto-refresh skipped: panel is dirty")
+                return
+        except Exception:
+            return
+        try:
+            note_id = getattr(self._note_data, "id", "") if self._note_data else ""
+            if not note_id:
+                if debug_log:
+                    debug_log.debug("[NOTE_EDIT] Auto-refresh skipped: no note id")
+                return
+            state = getattr(self.app, "state", None)
+            if not state:
+                return
+            latest = next((n for n in getattr(state, 'notes', []) if n.id.startswith(note_id)), None)
+            if not latest:
+                if debug_log:
+                    debug_log.debug("[NOTE_EDIT] Auto-refresh skipped: latest note not found in state")
+                return
+            current_updated = getattr(self._note_data, "updated_at", "") if self._note_data else ""
+            latest_updated = getattr(latest, "updated_at", "")
+            if latest_updated and latest_updated != (current_updated or ""):
+                if debug_log:
+                    debug_log.info(f"[NOTE_EDIT] Detected external change for note {note_id[:8]} -> refreshing fields (updated_at: {current_updated} -> {latest_updated})")
+                from textual.widgets import Input
+                # Update inputs
+                self.query_one("#title_input", Input).value = latest.title or ""
+                self.query_one("#tags_input", Input).value = ", ".join(latest.tags or [])
+                try:
+                    from textual.widgets import TextArea
+                    self.query_one("#body_textarea", TextArea).text = latest.body_md or ""
+                except Exception:
+                    try:
+                        self.query_one("#body_input", Input).value = latest.body_md or ""
+                    except Exception:
+                        pass
+                # Sync local model
+                if self._note_data:
+                    self._note_data.title = latest.title
+                    self._note_data.tags = list(latest.tags or [])
+                    self._note_data.body_md = latest.body_md or ""
+                    self._note_data.updated_at = latest_updated
+                # Reset original values to keep dirty=false
+                try:
+                    self._capture_original_values()
+                except Exception:
+                    pass
+                # Notify user for visibility
+                try:
+                    self.app.notify("Note updated externally; editor refreshed", severity="information")
+                except Exception:
+                    pass
+            else:
+                if debug_log:
+                    debug_log.debug("[NOTE_EDIT] Auto-refresh: no external changes detected")
+        except Exception:
+            pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses"""
         from debug_logger import debug_log
 
-        debug_log.info(f"[NOTE_EDIT] ✅ Button pressed: {event.button.id}")
+        debug_log.info(f"[NOTE_EDIT] Ã¢Å“â€¦ Button pressed: {event.button.id}")
 
         if event.button.id == "save_btn":
-            debug_log.info("[NOTE_EDIT] → Calling action_save()")
+            debug_log.info("[NOTE_EDIT] Ã¢â€ â€™ Calling action_save()")
             self.action_save()
             event.stop()
         elif event.button.id == "cancel_btn":
-            debug_log.info("[NOTE_EDIT] → Calling action_cancel()")
+            debug_log.info("[NOTE_EDIT] Ã¢â€ â€™ Calling action_cancel()")
             # action_cancel is @work decorated, so calling it directly creates the worker
             self.action_cancel()
             event.stop()
@@ -299,7 +369,7 @@ class NoteEditPanel(VerticalScroll):
             # Update dirty indicator
             dirty_indicator = self.query_one("#dirty_indicator", Static)
             if is_changed:
-                dirty_indicator.update("[yellow]● Unsaved changes[/yellow]")
+                dirty_indicator.update("[yellow]Ã¢â€”Â Unsaved changes[/yellow]")
             else:
                 dirty_indicator.update("")
 
@@ -315,7 +385,7 @@ class NoteEditPanel(VerticalScroll):
         from config import DEFAULT_NOTES_DIR
         from datetime import datetime
 
-        debug_log.info("[NOTE_EDIT] 💾 action_save() called")
+        debug_log.info("[NOTE_EDIT] Ã°Å¸â€™Â¾ action_save() called")
 
         # Get field values
         title = self.query_one("#title_input", Input).value.strip()
@@ -346,17 +416,13 @@ class NoteEditPanel(VerticalScroll):
 
         if self._is_new:
             # Create new note
-            note = Note(
-                id="",  # Will be generated
-                title=title,
-                body_md=body,
-                tags=tags,
-                task_ids=[],
-                created_at=datetime.now().isoformat()
-            )
-            saved_note = repo.save(note)
+            saved_note = repo.create(title=title, tags=tags, task_ids=[], body_md=body)
+            try:
+                self.app.state.mark_notes_dirty()
+            except Exception:
+                pass
             self.app.notify(f"Note created: {title}", severity="success")
-            debug_log.info(f"[NOTE_EDIT] ✅ Note created: {title}")
+            debug_log.info(f"[NOTE_EDIT] Ã¢Å“â€¦ Note created: {title}")
 
             # Update app state
             self.app.state.selected_note_id = saved_note.id
@@ -366,9 +432,13 @@ class NoteEditPanel(VerticalScroll):
             self._note_data.title = title
             self._note_data.tags = tags
             self._note_data.body_md = body
-            repo.save(self._note_data)
+            repo.update(self._note_data)
+            try:
+                self.app.state.mark_notes_dirty()
+            except Exception:
+                pass
             self.app.notify(f"Note updated: {title}", severity="success")
-            debug_log.info(f"[NOTE_EDIT] ✅ Note updated: {title}")
+            debug_log.info(f"[NOTE_EDIT] Ã¢Å“â€¦ Note updated: {title}")
 
         # Return to list view
         from core.state import LeftPanelMode
@@ -423,9 +493,7 @@ class NoteEditPanel(VerticalScroll):
                 pass
             debug_log.info("[NOTE_EDIT] -> Cancel (edit): DETAIL_NOTE (state+app)")
 
-        # Refresh note table to show current state
-        if hasattr(self.app, 'refresh_note_table'):
-            self.app.refresh_note_table()
+        # Refresh handled by app watcher
 
     def on_key(self, event) -> None:
         """Intercept Esc to prevent bubbling to next view after mode switch."""
@@ -448,3 +516,5 @@ class NoteEditPanel(VerticalScroll):
             return super().on_key(event)
         except Exception:
             return
+
+

@@ -56,6 +56,8 @@ class AppState:
         self.selected_note_id: str | None = None  # NEW - for panel system
         self.notes_query: str = ""
         self.notes_task_id_filter: int | None = None
+        self._notes_dirty: bool = True
+        self._notes_last_loaded_at: float = 0.0
 
         # Left panel state (NEW - for vim-style panel switching)
         self.left_panel_mode: LeftPanelMode = LeftPanelMode.LIST_TASKS
@@ -413,6 +415,14 @@ class AppState:
         return [self._note_index[i] for i in ids if i in self._note_index]
 
     def refresh_notes_from_disk(self) -> None:
+        # Skip reload if not dirty and refreshed very recently (debounce ~500ms)
+        try:
+            import time as _t
+            now = _t.monotonic()
+            if not getattr(self, "_notes_dirty", True) and (now - getattr(self, "_notes_last_loaded_at", 0.0)) < 0.5:
+                return
+        except Exception:
+            pass
         try:
             from services.notes import FileNoteRepository
             from config import DEFAULT_NOTES_DIR
@@ -428,8 +438,18 @@ class AppState:
                     debug_log.debug(f"[STATE] Note sample: {sample}")
             except Exception:
                 pass
+            try:
+                import time as _t2
+                self._notes_last_loaded_at = _t2.monotonic()
+            except Exception:
+                pass
+            self._notes_dirty = False
         except Exception:
             pass
+
+    def mark_notes_dirty(self) -> None:
+        """Mark the in-memory notes cache as dirty to force reload on next refresh."""
+        self._notes_dirty = True
 
     # ------------------------------------------------------------------
     # Preferences

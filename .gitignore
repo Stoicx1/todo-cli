@@ -14,6 +14,7 @@ tasks.json.backup*
 *.stackdump
 ~/.todo_cli_history
 ~/.todo_cli_settings.json
+notes/*.md
 
 # Editors
 .vscode/
