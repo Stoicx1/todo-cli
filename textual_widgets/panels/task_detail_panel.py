@@ -213,6 +213,10 @@ class TaskDetailPanel(VerticalScroll):
         debug_log.info("[TASK_DETAIL] 🔙 action_back_to_list() called")
         from core.state import LeftPanelMode
         self.app.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+        try:
+            self.app.left_panel_mode = LeftPanelMode.LIST_TASKS
+        except Exception:
+            pass
         debug_log.info("[TASK_DETAIL] ✅ Switched to LIST_TASKS mode")
 
     def action_edit_task(self) -> None:
@@ -222,7 +226,33 @@ class TaskDetailPanel(VerticalScroll):
         from core.state import LeftPanelMode
         self.app.state.edit_mode_is_new = False
         self.app.state.left_panel_mode = LeftPanelMode.EDIT_TASK
+        try:
+            self.app.left_panel_mode = LeftPanelMode.EDIT_TASK
+        except Exception:
+            pass
         debug_log.info("[TASK_DETAIL] ✅ Switched to EDIT_TASK mode")
+
+    def on_key(self, event) -> None:
+        """Consume Esc to avoid double handling after mode switch."""
+        if getattr(event, "key", "") == "escape":
+            try:
+                from debug_logger import debug_log
+                debug_log.info("[TASK_DETAIL] Esc intercepted -> back_to_list() and consume")
+            except Exception:
+                pass
+            try:
+                self.action_back_to_list()
+            except Exception:
+                pass
+            try:
+                event.stop(); event.prevent_default()
+            except Exception:
+                pass
+            return
+        try:
+            return super().on_key(event)
+        except Exception:
+            return
 
     @work(exclusive=True)
     async def action_delete_task(self) -> None:

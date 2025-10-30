@@ -381,6 +381,16 @@ class TaskEditPanel(VerticalScroll):
         # Return to list view
         from core.state import LeftPanelMode
         self.app.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+        # Also update app reactive property so watcher triggers panel switch
+        try:
+            self.app.left_panel_mode = LeftPanelMode.LIST_TASKS
+        except Exception:
+            pass
+        try:
+            current_mode = getattr(self.app._left_panel_container, "current_mode", None)
+            debug_log.info(f"[TASK_EDIT] -> Switched to LIST_TASKS (state+app). container_current_mode={current_mode}")
+        except Exception:
+            debug_log.info("[TASK_EDIT] -> Switched to LIST_TASKS (state+app)")
         self.app.refresh_table()
 
         # Save to file
@@ -390,6 +400,7 @@ class TaskEditPanel(VerticalScroll):
     async def action_cancel(self) -> None:
         """Cancel editing with dirty check (Esc)"""
         from core.state import LeftPanelMode
+        from debug_logger import debug_log
 
         # Check if dirty
         if self.is_dirty:
@@ -402,14 +413,47 @@ class TaskEditPanel(VerticalScroll):
             if not confirmed:
                 return
 
-        # Return to previous state
+        # Navigation after cancel:
+        # - If creating new: go to LIST (table)
+        # - If editing existing: go to DETAIL (stay on selected item)
         if self._is_new:
-            # Creating new task - return to list
             self.app.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+            try:
+                self.app.left_panel_mode = LeftPanelMode.LIST_TASKS
+            except Exception:
+                pass
+            debug_log.info("[TASK_EDIT] -> Cancel (new): LIST_TASKS (state+app)")
         else:
-            # Editing existing - return to detail view
             self.app.state.left_panel_mode = LeftPanelMode.DETAIL_TASK
+            try:
+                self.app.left_panel_mode = LeftPanelMode.DETAIL_TASK
+            except Exception:
+                pass
+            debug_log.info("[TASK_EDIT] -> Cancel (edit): DETAIL_TASK (state+app)")
 
         # Refresh table to show current state
         if hasattr(self.app, 'refresh_table'):
             self.app.refresh_table()
+
+    def on_key(self, event) -> None:
+        """Intercept Esc to prevent bubbling to next view after mode switch."""
+        if getattr(event, "key", "") == "escape":
+            try:
+                from debug_logger import debug_log
+                debug_log.info("[TASK_EDIT] Esc intercepted -> invoking action_cancel() and consuming event")
+            except Exception:
+                pass
+            # Invoke cancel and consume
+            try:
+                self.action_cancel()
+            except Exception:
+                pass
+            try:
+                event.stop(); event.prevent_default()
+            except Exception:
+                pass
+            return
+        try:
+            return super().on_key(event)
+        except Exception:
+            return

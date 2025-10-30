@@ -184,6 +184,47 @@ Resolved multiple critical UI/UX issues reported by user.
 - Clear visual distinction between input types
 - Unified input toggle for better UX
 
+### Phase 3B: Critical Event Handling Fixes ✅
+**Completed:** 2025-10-30
+
+Fixed critical event bubbling and mode synchronization issues.
+
+#### Escape Key Bubbling Fix (Critical)
+**Problem:** Esc keypress triggered action in current panel AND bubbled to next panel
+**Root Cause:** No event consumption after mode switch
+**Impact:** Double execution (e.g., Esc in edit panel → back to list → Esc in list → close app)
+
+**Solution:**
+- Added `on_key()` handlers to all 4 panels
+- Intercept Esc, execute action, consume event with `event.stop()` + `event.prevent_default()`
+- Defensive try/except for robustness
+
+#### Dual Mode Property Synchronization (Critical)
+**Problem:** Mode switches updated `state.left_panel_mode` but not `app.left_panel_mode`
+**Root Cause:** App reactive property triggers watcher that mounts panels
+**Impact:** Mode change succeeded but panel didn't re-render (ghost state)
+
+**Solution:**
+- All mode switches now update BOTH properties:
+  - `self.app.state.left_panel_mode = <mode>` (state tracking)
+  - `self.app.left_panel_mode = <mode>` (triggers watcher)
+- Wrapped in try/except for edge cases
+
+#### Cancel Navigation Enhancement
+**Improvement:** Cancel now returns to DETAIL (not LIST) when editing existing items
+**UX Benefit:** User stays on selected item context after canceling edit
+
+**Files Modified:**
+- `textual_widgets/panels/task_detail_panel.py` (+30 lines)
+- `textual_widgets/panels/task_edit_panel.py` (+50 lines)
+- `textual_widgets/panels/note_detail_panel.py` (+30 lines)
+- `textual_widgets/panels/note_edit_panel.py` (+49 lines)
+
+**User Benefit:**
+- No more double Esc execution
+- Reliable panel switching
+- Predictable navigation flow
+
 ## Planned Work (Future Enhancements)
 
 ### Phase 4: Tool Execution Indicators

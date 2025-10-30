@@ -373,6 +373,16 @@ class NoteEditPanel(VerticalScroll):
         # Return to list view
         from core.state import LeftPanelMode
         self.app.state.left_panel_mode = LeftPanelMode.LIST_NOTES
+        # Also update app reactive property so watcher triggers panel switch
+        try:
+            self.app.left_panel_mode = LeftPanelMode.LIST_NOTES
+        except Exception:
+            pass
+        try:
+            current_mode = getattr(self.app._left_panel_container, "current_mode", None)
+            debug_log.info(f"[NOTE_EDIT] -> Switched to LIST_NOTES (state+app). container_current_mode={current_mode}")
+        except Exception:
+            debug_log.info("[NOTE_EDIT] -> Switched to LIST_NOTES (state+app)")
 
         # Refresh note table
         if hasattr(self.app, 'refresh_note_table'):
@@ -382,6 +392,7 @@ class NoteEditPanel(VerticalScroll):
     async def action_cancel(self) -> None:
         """Cancel editing with dirty check (Esc)"""
         from core.state import LeftPanelMode
+        from debug_logger import debug_log
 
         # Check if dirty
         if self.is_dirty:
@@ -394,14 +405,46 @@ class NoteEditPanel(VerticalScroll):
             if not confirmed:
                 return
 
-        # Return to previous state
+        # Navigation after cancel:
+        # - If creating new: go to LIST (table)
+        # - If editing existing: go to DETAIL (stay on selected item)
         if self._is_new:
-            # Creating new note - return to list
             self.app.state.left_panel_mode = LeftPanelMode.LIST_NOTES
+            try:
+                self.app.left_panel_mode = LeftPanelMode.LIST_NOTES
+            except Exception:
+                pass
+            debug_log.info("[NOTE_EDIT] -> Cancel (new): LIST_NOTES (state+app)")
         else:
-            # Editing existing - return to detail view
             self.app.state.left_panel_mode = LeftPanelMode.DETAIL_NOTE
+            try:
+                self.app.left_panel_mode = LeftPanelMode.DETAIL_NOTE
+            except Exception:
+                pass
+            debug_log.info("[NOTE_EDIT] -> Cancel (edit): DETAIL_NOTE (state+app)")
 
         # Refresh note table to show current state
         if hasattr(self.app, 'refresh_note_table'):
             self.app.refresh_note_table()
+
+    def on_key(self, event) -> None:
+        """Intercept Esc to prevent bubbling to next view after mode switch."""
+        if getattr(event, "key", "") == "escape":
+            try:
+                from debug_logger import debug_log
+                debug_log.info("[NOTE_EDIT] Esc intercepted -> invoking action_cancel() and consuming event")
+            except Exception:
+                pass
+            try:
+                self.action_cancel()
+            except Exception:
+                pass
+            try:
+                event.stop(); event.prevent_default()
+            except Exception:
+                pass
+            return
+        try:
+            return super().on_key(event)
+        except Exception:
+            return

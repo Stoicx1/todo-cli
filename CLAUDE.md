@@ -133,6 +133,51 @@ def on_input_submitted(self, event: Input.Submitted) -> None:
 
 **Affected Widgets:** TaskDetailPanel, NoteDetailPanel, TaskEditPanel, NoteEditPanel (all 12 buttons)
 
+### 6. Dual Mode Property Synchronization (CRITICAL)
+
+**Always update BOTH mode properties when switching panels:**
+
+```python
+# ✅ CORRECT - Synchronize state and app properties
+self.app.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+try:
+    self.app.left_panel_mode = LeftPanelMode.LIST_TASKS  # Triggers watcher
+except Exception:
+    pass
+
+# ❌ WRONG - Only updates state, panel doesn't re-render
+self.app.state.left_panel_mode = LeftPanelMode.LIST_TASKS
+```
+
+**Why:** State property tracks intended mode, app reactive property triggers the watcher that actually mounts/unmounts panels. Both must be synchronized.
+
+**Affected Methods:** All panel mode switches in action_back_to_list(), action_edit_task(), action_edit_note(), action_save(), action_cancel()
+
+### 7. Escape Key Event Consumption (CRITICAL)
+
+**All panels that handle Esc must consume the event to prevent bubbling:**
+
+```python
+def on_key(self, event) -> None:
+    """Intercept Esc to prevent bubbling after mode switch."""
+    if getattr(event, "key", "") == "escape":
+        try:
+            self.action_back_to_list()  # Or appropriate action
+        except Exception:
+            pass
+        try:
+            event.stop()
+            event.prevent_default()
+        except Exception:
+            pass
+        return
+    return super().on_key(event)
+```
+
+**Without event consumption:** Esc triggers action in current panel, then bubbles to newly-mounted panel, triggering its Esc handler (cascade effect).
+
+**Affected Panels:** TaskDetailPanel, TaskEditPanel, NoteDetailPanel, NoteEditPanel
+
 ## Theme Configuration
 
 **Simple config-based approach** - no runtime switching complexity
